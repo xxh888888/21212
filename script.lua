@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local pgui = player:WaitForChild("PlayerGui")
@@ -15,6 +16,27 @@ local aimbotEnabled, aimbotConnection, aimbotRadius, aimbotActive = false, nil, 
 local dodgeEnabled, dodgeConnection, dodgeRadius = false, nil, 15
 local orbitEnabled, orbitConnection, orbitRadius, orbitSpeed, orbitDistance, orbitTarget = false, nil, 20, 10, 5, nil
 local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStrength = false, false, UDim2.new(0.5, -100, 0.5, -100), 200, 1
+
+-- 骨骼调节变量
+local boneManipEnabled = false
+local selectedBone = "RightArm"
+local manipMode = "Position" -- Position 或 Rotation
+local boneDragActive = false
+local boneDragAxis = nil
+local boneDragStartMouse = nil
+local boneDragStartValue = nil
+local originalCameraCFrame = nil
+local boneValues = {
+    RightArm = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)},
+    LeftArm = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)},
+    RightLeg = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)},
+    LeftLeg = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)},
+    Torso = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)},
+    Head = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)}
+}
+local boneOriginalC0 = {}
+local boneManipConnection = nil
+local boneWidgets = {} -- 存储小球体控件
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -39,7 +61,7 @@ ball.ZIndex = 10000
 
 local menu = Instance.new("Frame")
 menu.Parent = gui
-menu.Size = UDim2.new(0, 360, 0, 380)
+menu.Size = UDim2.new(0, 420, 0, 520)
 menu.Position = ball.Position + UDim2.new(0, 60, 0, 0)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.BackgroundTransparency = 0.1
@@ -149,7 +171,7 @@ aimbotCircleStroke.Color = Color3.fromRGB(255, 0, 0)
 aimbotCircleStroke.Transparency = 0.3
 aimbotCircleStroke.Thickness = 2
 
--- 自瞄触发按钮（Active = false 穿透点击）
+-- 自瞄触发按钮
 local aimTriggerBtn = Instance.new("TextButton", gui)
 aimTriggerBtn.Size = UDim2.new(0, aimTriggerSize, 0, aimTriggerSize)
 aimTriggerBtn.Position = aimTriggerPos
@@ -330,6 +352,553 @@ orbitSpeedDisplay.Font = Enum.Font.Gotham
 orbitSpeedDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local orbitSpeedSlider, orbitSpeedFill, orbitSpeedBtn, _ = createSlider(orbitCard, 1, 100, 10)
 orbitSpeedSlider.Position = UDim2.new(0, 10, 0, 164)
+
+-- 骨骼动画调节器卡片
+local boneCard = createCard(scrollingFrame, 10, 400)
+local boneHeader, boneToggle = createHeader(boneCard, "骨骼动画调节")
+
+-- 骨骼选择按钮行
+local boneSelectFrame = Instance.new("Frame", boneCard)
+boneSelectFrame.Size = UDim2.new(1, -20, 0, 30)
+boneSelectFrame.Position = UDim2.new(0, 10, 0, 34)
+boneSelectFrame.BackgroundTransparency = 1
+
+local boneButtons = {}
+local boneNames = {"右臂", "左臂", "右腿", "左腿", "躯干", "头部"}
+local boneKeys = {"RightArm", "LeftArm", "RightLeg", "LeftLeg", "Torso", "Head"}
+
+for i, name in ipairs(boneNames) do
+    local btn = Instance.new("TextButton", boneSelectFrame)
+    btn.Size = UDim2.new(0.15, 0, 1, -2)
+    btn.Position = UDim2.new((i-1) * 0.165, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    btn.Text = name
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamBold
+    btn.AutoButtonColor = false
+    boneButtons[boneKeys[i]] = btn
+end
+
+-- 模式切换按钮
+local modeFrame = Instance.new("Frame", boneCard)
+modeFrame.Size = UDim2.new(1, -20, 0, 30)
+modeFrame.Position = UDim2.new(0, 10, 0, 70)
+modeFrame.BackgroundTransparency = 1
+
+local posModeBtn = Instance.new("TextButton", modeFrame)
+posModeBtn.Size = UDim2.new(0.48, 0, 1, 0)
+posModeBtn.Position = UDim2.new(0, 0, 0, 0)
+posModeBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+posModeBtn.Text = "位置模式"
+posModeBtn.TextColor3 = Color3.new(1, 1, 1)
+posModeBtn.TextSize = 12
+posModeBtn.Font = Enum.Font.GothamBold
+posModeBtn.AutoButtonColor = false
+
+local rotModeBtn = Instance.new("TextButton", modeFrame)
+rotModeBtn.Size = UDim2.new(0.48, 0, 1, 0)
+rotModeBtn.Position = UDim2.new(0.52, 0, 0, 0)
+rotModeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+rotModeBtn.Text = "旋转模式"
+rotModeBtn.TextColor3 = Color3.new(1, 1, 1)
+rotModeBtn.TextSize = 12
+rotModeBtn.Font = Enum.Font.GothamBold
+rotModeBtn.AutoButtonColor = false
+
+-- XYZ滑块容器
+local xyzFrame = Instance.new("Frame", boneCard)
+xyzFrame.Size = UDim2.new(1, -20, 0, 110)
+xyzFrame.Position = UDim2.new(0, 10, 0, 106)
+xyzFrame.BackgroundTransparency = 1
+
+-- X轴滑块
+local xContainer = Instance.new("Frame", xyzFrame)
+xContainer.Size = UDim2.new(1, 0, 0, 28)
+xContainer.Position = UDim2.new(0, 0, 0, 0)
+xContainer.BackgroundTransparency = 1
+local xLabel = Instance.new("TextLabel", xContainer)
+xLabel.Size = UDim2.new(0, 25, 1, 0)
+xLabel.Text = "X:"
+xLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+xLabel.BackgroundTransparency = 1
+xLabel.TextSize = 12
+xLabel.Font = Enum.Font.GothamBold
+local xBg = Instance.new("Frame", xContainer)
+xBg.Size = UDim2.new(1, -35, 0, 5)
+xBg.Position = UDim2.new(0, 30, 0, 11)
+xBg.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+xBg.BorderSizePixel = 0
+local xFill = Instance.new("Frame", xBg)
+xFill.Size = UDim2.new(0.5, 0, 1, 0)
+xFill.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+xFill.BorderSizePixel = 0
+local xBtn = Instance.new("TextButton", xBg)
+xBtn.Size = UDim2.new(0, 16, 0, 16)
+xBtn.Position = UDim2.new(0.5, -8, 0.5, -8)
+xBtn.BackgroundColor3 = Color3.new(1, 1, 1)
+xBtn.AutoButtonColor = false
+xBtn.Text = ""
+local xValue = Instance.new("TextLabel", xContainer)
+xValue.Size = UDim2.new(0, 30, 0, 20)
+xValue.Position = UDim2.new(1, -30, 0, 5)
+xValue.BackgroundTransparency = 1
+xValue.Text = "0"
+xValue.TextColor3 = Color3.fromRGB(180, 180, 180)
+xValue.TextSize = 10
+
+-- Y轴滑块
+local yContainer = Instance.new("Frame", xyzFrame)
+yContainer.Size = UDim2.new(1, 0, 0, 28)
+yContainer.Position = UDim2.new(0, 0, 0, 32)
+yContainer.BackgroundTransparency = 1
+local yLabel = Instance.new("TextLabel", yContainer)
+yLabel.Size = UDim2.new(0, 25, 1, 0)
+yLabel.Text = "Y:"
+yLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+yLabel.BackgroundTransparency = 1
+yLabel.TextSize = 12
+yLabel.Font = Enum.Font.GothamBold
+local yBg = Instance.new("Frame", yContainer)
+yBg.Size = UDim2.new(1, -35, 0, 5)
+yBg.Position = UDim2.new(0, 30, 0, 11)
+yBg.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+yBg.BorderSizePixel = 0
+local yFill = Instance.new("Frame", yBg)
+yFill.Size = UDim2.new(0.5, 0, 1, 0)
+yFill.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+yFill.BorderSizePixel = 0
+local yBtn = Instance.new("TextButton", yBg)
+yBtn.Size = UDim2.new(0, 16, 0, 16)
+yBtn.Position = UDim2.new(0.5, -8, 0.5, -8)
+yBtn.BackgroundColor3 = Color3.new(1, 1, 1)
+yBtn.AutoButtonColor = false
+yBtn.Text = ""
+local yValue = Instance.new("TextLabel", yContainer)
+yValue.Size = UDim2.new(0, 30, 0, 20)
+yValue.Position = UDim2.new(1, -30, 0, 5)
+yValue.BackgroundTransparency = 1
+yValue.Text = "0"
+yValue.TextColor3 = Color3.fromRGB(180, 180, 180)
+yValue.TextSize = 10
+
+-- Z轴滑块
+local zContainer = Instance.new("Frame", xyzFrame)
+zContainer.Size = UDim2.new(1, 0, 0, 28)
+zContainer.Position = UDim2.new(0, 0, 0, 64)
+zContainer.BackgroundTransparency = 1
+local zLabel = Instance.new("TextLabel", zContainer)
+zLabel.Size = UDim2.new(0, 25, 1, 0)
+zLabel.Text = "Z:"
+zLabel.TextColor3 = Color3.fromRGB(100, 100, 255)
+zLabel.BackgroundTransparency = 1
+zLabel.TextSize = 12
+zLabel.Font = Enum.Font.GothamBold
+local zBg = Instance.new("Frame", zContainer)
+zBg.Size = UDim2.new(1, -35, 0, 5)
+zBg.Position = UDim2.new(0, 30, 0, 11)
+zBg.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+zBg.BorderSizePixel = 0
+local zFill = Instance.new("Frame", zBg)
+zFill.Size = UDim2.new(0.5, 0, 1, 0)
+zFill.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+zFill.BorderSizePixel = 0
+local zBtn = Instance.new("TextButton", zBg)
+zBtn.Size = UDim2.new(0, 16, 0, 16)
+zBtn.Position = UDim2.new(0.5, -8, 0.5, -8)
+zBtn.BackgroundColor3 = Color3.new(1, 1, 1)
+zBtn.AutoButtonColor = false
+zBtn.Text = ""
+local zValue = Instance.new("TextLabel", zContainer)
+zValue.Size = UDim2.new(0, 30, 0, 20)
+zValue.Position = UDim2.new(1, -30, 0, 5)
+zValue.BackgroundTransparency = 1
+zValue.Text = "0"
+zValue.TextColor3 = Color3.fromRGB(180, 180, 180)
+zValue.TextSize = 10
+
+-- 重置按钮
+local resetBtn = Instance.new("TextButton", boneCard)
+resetBtn.Size = UDim2.new(0.8, 0, 0, 30)
+resetBtn.Position = UDim2.new(0.1, 0, 0, 225)
+resetBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+resetBtn.Text = "重置所有骨骼"
+resetBtn.TextColor3 = Color3.new(1, 1, 1)
+resetBtn.TextSize = 13
+resetBtn.Font = Enum.Font.GothamBold
+resetBtn.AutoButtonColor = false
+
+-- 说明文字
+local infoLabel = Instance.new("TextLabel", boneCard)
+infoLabel.Size = UDim2.new(1, -20, 0, 40)
+infoLabel.Position = UDim2.new(0, 10, 0, 265)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Text = "提示：开启后摄像头会移动到人物正前方\n拖动XYZ滑块可调节骨骼位置/角度"
+infoLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+infoLabel.TextSize = 10
+infoLabel.Font = Enum.Font.Gotham
+infoLabel.TextXAlignment = Enum.TextXAlignment.Center
+infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+
+-- 更新滑块UI函数
+local function updateBoneSliders()
+    local val = boneValues[selectedBone]
+    if manipMode == "Position" then
+        local px = math.clamp((val.pos.X + 3) / 6, 0, 1)
+        local py = math.clamp((val.pos.Y + 3) / 6, 0, 1)
+        local pz = math.clamp((val.pos.Z + 3) / 6, 0, 1)
+        xFill.Size = UDim2.new(px, 0, 1, 0)
+        xBtn.Position = UDim2.new(px, -8, 0.5, -8)
+        yFill.Size = UDim2.new(py, 0, 1, 0)
+        yBtn.Position = UDim2.new(py, -8, 0.5, -8)
+        zFill.Size = UDim2.new(pz, 0, 1, 0)
+        zBtn.Position = UDim2.new(pz, -8, 0.5, -8)
+        xValue.Text = string.format("%.1f", val.pos.X)
+        yValue.Text = string.format("%.1f", val.pos.Y)
+        zValue.Text = string.format("%.1f", val.pos.Z)
+    else
+        local rx = math.clamp((val.rot.X + 180) / 360, 0, 1)
+        local ry = math.clamp((val.rot.Y + 180) / 360, 0, 1)
+        local rz = math.clamp((val.rot.Z + 180) / 360, 0, 1)
+        xFill.Size = UDim2.new(rx, 0, 1, 0)
+        xBtn.Position = UDim2.new(rx, -8, 0.5, -8)
+        yFill.Size = UDim2.new(ry, 0, 1, 0)
+        yBtn.Position = UDim2.new(ry, -8, 0.5, -8)
+        zFill.Size = UDim2.new(rz, 0, 1, 0)
+        zBtn.Position = UDim2.new(rz, -8, 0.5, -8)
+        xValue.Text = string.format("%.0f", val.rot.X)
+        yValue.Text = string.format("%.0f", val.rot.Y)
+        zValue.Text = string.format("%.0f", val.rot.Z)
+    end
+end
+
+-- 应用骨骼变换
+local function applyBoneTransform(character, boneName, pos, rot)
+    local motor = nil
+    for _, m in ipairs(character:GetDescendants()) do
+        if m:IsA("Motor6D") and m.Name == boneName then
+            motor = m
+            break
+        end
+    end
+    if motor then
+        local c0 = motor.C0
+        local cf = CFrame.new(pos.X, pos.Y, pos.Z) * CFrame.Angles(math.rad(rot.X), math.rad(rot.Y), math.rad(rot.Z))
+        motor.C0 = cf
+    end
+end
+
+-- 更新所有骨骼
+local function updateAllBones(character)
+    if not character then return end
+    for boneName, values in pairs(boneValues) do
+        applyBoneTransform(character, boneName, values.pos, values.rot)
+    end
+end
+
+-- 保存原始骨骼
+local function saveOriginalBones(character)
+    boneOriginalC0 = {}
+    for boneName in pairs(boneValues) do
+        for _, m in ipairs(character:GetDescendants()) do
+            if m:IsA("Motor6D") and m.Name == boneName then
+                boneOriginalC0[boneName] = m.C0
+                break
+            end
+        end
+    end
+end
+
+-- 重置所有骨骼
+local function resetAllBones()
+    for boneName in pairs(boneValues) do
+        boneValues[boneName] = {pos = Vector3.new(0, 0, 0), rot = Vector3.new(0, 0, 0)}
+    end
+    if player.Character then
+        updateAllBones(player.Character)
+    end
+    updateBoneSliders()
+end
+
+-- 创建3D小球体控件（显示在每个骨骼关节处）
+local function createBoneWidgets(character)
+    -- 清除旧控件
+    for _, widget in pairs(boneWidgets) do
+        if widget then widget:Destroy() end
+    end
+    boneWidgets = {}
+    
+    if not boneManipEnabled or not character then return end
+    
+    for boneName, values in pairs(boneValues) do
+        local motor = nil
+        for _, m in ipairs(character:GetDescendants()) do
+            if m:IsA("Motor6D") and m.Name == boneName then
+                motor = m
+                break
+            end
+        end
+        if motor then
+            -- 创建Attachment来定位小球位置
+            local attachment = Instance.new("Attachment")
+            attachment.Name = "BoneWidget_" .. boneName
+            attachment.Parent = motor.Parent
+            
+            local sphere = Instance.new("Part")
+            sphere.Name = "BoneWidgetSphere_" .. boneName
+            sphere.Size = Vector3.new(0.5, 0.5, 0.5)
+            sphere.Shape = Enum.PartType.Ball
+            sphere.BrickColor = BrickColor.new("Bright red")
+            sphere.Material = Enum.Material.Neon
+            sphere.Anchored = false
+            sphere.CanCollide = false
+            sphere.CanQuery = false
+            sphere.Transparency = 0.3
+            sphere.Parent = character
+            
+            -- 添加光环效果
+            local selectionBox = Instance.new("SelectionBox")
+            selectionBox.Adornee = sphere
+            selectionBox.Color3 = Color3.fromRGB(255, 0, 0)
+            selectionBox.LineThickness = 0.05
+            selectionBox.Transparency = 0.5
+            selectionBox.Parent = sphere
+            
+            boneWidgets[boneName] = {sphere = sphere, attachment = attachment, motor = motor}
+        end
+    end
+end
+
+-- 更新小球位置
+local function updateWidgetPositions(character)
+    if not boneManipEnabled or not character then return end
+    
+    for boneName, widget in pairs(boneWidgets) do
+        if widget and widget.motor and widget.motor.Parent then
+            local c0 = widget.motor.C0
+            local partPos = widget.motor.Parent.Position
+            local offset = Vector3.new(c0.X, c0.Y, c0.Z)
+            widget.sphere.CFrame = CFrame.new(partPos + offset)
+        end
+    end
+end
+
+-- 开启骨骼调节
+local function enableBoneManip()
+    boneManipEnabled = true
+    
+    -- 保存原始相机视角
+    if workspace.CurrentCamera then
+        originalCameraCFrame = workspace.CurrentCamera.CFrame
+        -- 将相机移动到人物正前方
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local forwardPos = hrp.Position + hrp.CFrame.LookVector * 5 + Vector3.new(0, 2, 0)
+            workspace.CurrentCamera.CFrame = CFrame.lookAt(forwardPos, hrp.Position)
+        end
+    end
+    
+    -- 保存原始骨骼并应用当前值
+    if player.Character then
+        saveOriginalBones(player.Character)
+        updateAllBones(player.Character)
+        createBoneWidgets(player.Character)
+        
+        -- 持续更新小球位置
+        boneManipConnection = RunService.Heartbeat:Connect(function()
+            if boneManipEnabled and player.Character then
+                updateWidgetPositions(player.Character)
+            end
+        end)
+    end
+end
+
+-- 关闭骨骼调节
+local function disableBoneManip()
+    boneManipEnabled = false
+    
+    -- 恢复相机视角
+    if originalCameraCFrame and workspace.CurrentCamera then
+        workspace.CurrentCamera.CFrame = originalCameraCFrame
+    end
+    
+    -- 清除小球控件
+    for _, widget in pairs(boneWidgets) do
+        if widget and widget.sphere then widget.sphere:Destroy() end
+        if widget and widget.attachment then widget.attachment:Destroy() end
+    end
+    boneWidgets = {}
+    
+    -- 断开连接
+    if boneManipConnection then
+        boneManipConnection:Disconnect()
+        boneManipConnection = nil
+    end
+    
+    -- 注意：不重置骨骼变换，保持当前调节的动作
+end
+
+-- 滑块设置函数
+local function setupBoneSlider(btn, bg, fill, axis, min, max, isRotation)
+    local dragging = false
+    btn.MouseButton1Down:Connect(function() dragging = true end)
+    bg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local ratio = math.clamp((input.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+            local value = min + ratio * (max - min)
+            if isRotation then
+                if axis == "X" then boneValues[selectedBone].rot = Vector3.new(value, boneValues[selectedBone].rot.Y, boneValues[selectedBone].rot.Z)
+                elseif axis == "Y" then boneValues[selectedBone].rot = Vector3.new(boneValues[selectedBone].rot.X, value, boneValues[selectedBone].rot.Z)
+                elseif axis == "Z" then boneValues[selectedBone].rot = Vector3.new(boneValues[selectedBone].rot.X, boneValues[selectedBone].rot.Y, value)
+                end
+            else
+                if axis == "X" then boneValues[selectedBone].pos = Vector3.new(value, boneValues[selectedBone].pos.Y, boneValues[selectedBone].pos.Z)
+                elseif axis == "Y" then boneValues[selectedBone].pos = Vector3.new(boneValues[selectedBone].pos.X, value, boneValues[selectedBone].pos.Z)
+                elseif axis == "Z" then boneValues[selectedBone].pos = Vector3.new(boneValues[selectedBone].pos.X, boneValues[selectedBone].pos.Y, value)
+                end
+            end
+            updateBoneSliders()
+            if player.Character then
+                applyBoneTransform(player.Character, selectedBone, boneValues[selectedBone].pos, boneValues[selectedBone].rot)
+            end
+        end
+    end)
+end
+
+-- 绑定骨骼滑块
+setupBoneSlider(xBtn, xBg, xFill, "X", -3, 3, false)
+setupBoneSlider(yBtn, yBg, yFill, "Y", -3, 3, false)
+setupBoneSlider(zBtn, zBg, zFill, "Z", -3, 3, false)
+
+-- 创建旋转模式的滑块回调（范围-180到180）
+local function setupRotationSlider(btn, bg, fill, axis)
+    local dragging = false
+    btn.MouseButton1Down:Connect(function() dragging = true end)
+    bg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local ratio = math.clamp((input.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+            local value = -180 + ratio * 360
+            if axis == "X" then boneValues[selectedBone].rot = Vector3.new(value, boneValues[selectedBone].rot.Y, boneValues[selectedBone].rot.Z)
+            elseif axis == "Y" then boneValues[selectedBone].rot = Vector3.new(boneValues[selectedBone].rot.X, value, boneValues[selectedBone].rot.Z)
+            elseif axis == "Z" then boneValues[selectedBone].rot = Vector3.new(boneValues[selectedBone].rot.X, boneValues[selectedBone].rot.Y, value)
+            end
+            updateBoneSliders()
+            if player.Character then
+                applyBoneTransform(player.Character, selectedBone, boneValues[selectedBone].pos, boneValues[selectedBone].rot)
+            end
+        end
+    end)
+end
+
+-- 注意：上面的滑块同时支持位置和旋转，通过manipMode判断显示不同范围
+-- 修改滑块回调以支持动态范围
+local function setupDynamicSlider(btn, bg, fill, axis)
+    local dragging = false
+    btn.MouseButton1Down:Connect(function() dragging = true end)
+    bg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local ratio = math.clamp((input.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+            local value
+            if manipMode == "Position" then
+                value = -3 + ratio * 6
+                if axis == "X" then boneValues[selectedBone].pos = Vector3.new(value, boneValues[selectedBone].pos.Y, boneValues[selectedBone].pos.Z)
+                elseif axis == "Y" then boneValues[selectedBone].pos = Vector3.new(boneValues[selectedBone].pos.X, value, boneValues[selectedBone].pos.Z)
+                elseif axis == "Z" then boneValues[selectedBone].pos = Vector3.new(boneValues[selectedBone].pos.X, boneValues[selectedBone].pos.Y, value)
+                end
+            else
+                value = -180 + ratio * 360
+                if axis == "X" then boneValues[selectedBone].rot = Vector3.new(value, boneValues[selectedBone].rot.Y, boneValues[selectedBone].rot.Z)
+                elseif axis == "Y" then boneValues[selectedBone].rot = Vector3.new(boneValues[selectedBone].rot.X, value, boneValues[selectedBone].rot.Z)
+                elseif axis == "Z" then boneValues[selectedBone].rot = Vector3.new(boneValues[selectedBone].rot.X, boneValues[selectedBone].rot.Y, value)
+                end
+            end
+            updateBoneSliders()
+            if player.Character then
+                applyBoneTransform(player.Character, selectedBone, boneValues[selectedBone].pos, boneValues[selectedBone].rot)
+            end
+        end
+    end)
+end
+
+-- 重新绑定滑块
+setupDynamicSlider(xBtn, xBg, xFill, "X")
+setupDynamicSlider(yBtn, yBg, yFill, "Y")
+setupDynamicSlider(zBtn, zBg, zFill, "Z")
+
+-- 骨骼选择按钮事件
+for boneKey, btn in pairs(boneButtons) do
+    btn.MouseButton1Click:Connect(function()
+        selectedBone = boneKey
+        for _, b in pairs(boneButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        updateBoneSliders()
+    end)
+end
+-- 默认选中右臂
+boneButtons.RightArm.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+
+-- 模式切换
+posModeBtn.MouseButton1Click:Connect(function()
+    manipMode = "Position"
+    posModeBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+    rotModeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    updateBoneSliders()
+end)
+
+rotModeBtn.MouseButton1Click:Connect(function()
+    manipMode = "Rotation"
+    posModeBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    rotModeBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+    updateBoneSliders()
+end)
+
+-- 重置按钮
+resetBtn.MouseButton1Click:Connect(function()
+    resetAllBones()
+end)
+
+-- 骨骼开关
+boneToggle.MouseButton1Down:Connect(function()
+    if boneManipEnabled then
+        disableBoneManip()
+        updateToggle(boneToggle, false)
+    else
+        enableBoneManip()
+        updateToggle(boneToggle, true)
+    end
+end)
 
 -- 更新函数
 local function updateToggle(btn, state)
@@ -891,7 +1460,7 @@ aimTriggerMoveBtn.MouseButton1Down:Connect(function()
     end
 end)
 
--- 自瞄触发按钮：按下激活，松开停用（Active = false 确保穿透点击）
+-- 自瞄触发按钮：按下激活，松开停用
 aimTriggerBtn.MouseButton1Down:Connect(function()
     if not aimTriggerMoving then aimbotActive = true end
 end)
@@ -971,6 +1540,13 @@ player.CharacterAdded:Connect(function(char)
     if playerCollisionEnabled then if collisionConnection then collisionConnection:Disconnect() end enablePlayerCollision() end
     if dodgeEnabled then if dodgeConnection then dodgeConnection:Disconnect() end enableDodge() end
     if orbitEnabled then if orbitConnection then orbitConnection:Disconnect() end enableOrbit() end
+    if boneManipEnabled then
+        -- 重新应用骨骼变换
+        task.wait(0.2)
+        saveOriginalBones(char)
+        updateAllBones(char)
+        createBoneWidgets(char)
+    end
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
@@ -978,10 +1554,11 @@ Players.PlayerRemoving:Connect(function(plr)
 end)
 
 -- 初始化
-for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle}) do
+for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle, boneToggle}) do
     updateToggle(t, false)
 end
 setSpeed(50); setFlySpeed(50); setFlyPanelSize(100); setSpinSpeed(50); setDodgeRadius(15)
 setOrbitRadius(20); setOrbitDistance(5); setOrbitSpeed(10); setAimbotRadius(200); setAimTriggerSize(200)
+updateBoneSliders()
 
-print("OK")
+print("OK - 骨骼动画调节器已加载")
