@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local pgui = player:WaitForChild("PlayerGui")
@@ -15,6 +16,8 @@ local aimbotEnabled, aimbotConnection, aimbotRadius, aimbotActive = false, nil, 
 local dodgeEnabled, dodgeConnection, dodgeRadius = false, nil, 15
 local orbitEnabled, orbitConnection, orbitRadius, orbitSpeed, orbitDistance, orbitTarget = false, nil, 20, 10, 5, nil
 local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStrength = false, false, UDim2.new(0.5, -100, 0.5, -100), 200, 1
+local raceEnabled, raceConnection, raceForward, raceBackward, raceBoostActive, originalFriction, originalDensity = false, nil, false, false, false, nil, nil
+local racePanel, raceForwardBtn, raceBackwardBtn, raceBoostBtn, raceMoveConnection = nil, nil, nil, nil, nil
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -39,7 +42,7 @@ ball.ZIndex = 10000
 
 local menu = Instance.new("Frame")
 menu.Parent = gui
-menu.Size = UDim2.new(0, 360, 0, 380)
+menu.Size = UDim2.new(0, 360, 0, 420)
 menu.Position = ball.Position + UDim2.new(0, 60, 0, 0)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.BackgroundTransparency = 0.1
@@ -149,7 +152,7 @@ aimbotCircleStroke.Color = Color3.fromRGB(255, 0, 0)
 aimbotCircleStroke.Transparency = 0.3
 aimbotCircleStroke.Thickness = 2
 
--- 自瞄触发按钮（Active = false 穿透点击）
+-- 自瞄触发按钮
 local aimTriggerBtn = Instance.new("TextButton", gui)
 aimTriggerBtn.Size = UDim2.new(0, aimTriggerSize, 0, aimTriggerSize)
 aimTriggerBtn.Position = aimTriggerPos
@@ -230,13 +233,16 @@ spinSpeedDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local spinSlider, spinFill, spinBtn, spinValue = createSlider(spinCard, 1, 1000, 50)
 spinSlider.Position = UDim2.new(0, 10, 0, 56)
 
-local espCard = createCard(scrollingFrame, 5, 42)
+local raceCard = createCard(scrollingFrame, 5, 42)
+local raceHeader, raceToggle = createHeader(raceCard, "一键赛车")
+
+local espCard = createCard(scrollingFrame, 6, 42)
 local espHeader, espToggle = createHeader(espCard, "人物内透")
 
-local collisionCard = createCard(scrollingFrame, 6, 42)
+local collisionCard = createCard(scrollingFrame, 7, 42)
 local collisionHeader, collisionToggle = createHeader(collisionCard, "强制碰撞")
 
-local aimbotCard = createCard(scrollingFrame, 7, 195)
+local aimbotCard = createCard(scrollingFrame, 8, 195)
 local aimbotHeader, aimbotToggle = createHeader(aimbotCard, "人物自瞄")
 local aimTriggerToggle = Instance.new("TextButton", aimbotCard)
 aimTriggerToggle.Size = UDim2.new(1, -20, 0, 22)
@@ -281,7 +287,7 @@ aimTriggerSizeDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local aimTriggerSizeSlider, aimTriggerSizeFill, aimTriggerSizeBtn, _ = createSlider(aimbotCard, 80, 400, 200)
 aimTriggerSizeSlider.Position = UDim2.new(0, 10, 0, 164)
 
-local dodgeCard = createCard(scrollingFrame, 8, 100)
+local dodgeCard = createCard(scrollingFrame, 9, 100)
 local dodgeHeader, dodgeToggle = createHeader(dodgeCard, "人物躲避")
 local dodgeRadiusDisplay = Instance.new("TextLabel", dodgeCard)
 dodgeRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
@@ -295,7 +301,7 @@ dodgeRadiusDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local dodgeSlider, dodgeFill, dodgeBtn, dodgeValue = createSlider(dodgeCard, 5, 50, 15)
 dodgeSlider.Position = UDim2.new(0, 10, 0, 56)
 
-local orbitCard = createCard(scrollingFrame, 9, 175)
+local orbitCard = createCard(scrollingFrame, 10, 175)
 local orbitHeader, orbitToggle = createHeader(orbitCard, "围绕旋转")
 local orbitRadiusDisplay = Instance.new("TextLabel", orbitCard)
 orbitRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
@@ -442,6 +448,357 @@ local function restorePose(char)
         if m and m.Parent then m.C0 = ov.C0; m.C1 = ov.C1 end
     end
     originalMotor6DValues = {}
+end
+
+-- 查找并隐藏原版UI控件
+local function findAndHideMobileControls()
+    local controls = {}
+    -- 尝试多种可能的原版控件名称
+    local possibleNames = {
+        "DynamicThumbstickFrame", "ThumbstickFrame", "JumpButton", "JumpButtonFrame",
+        "MobileButton", "VirtualThumbstick", "TouchJump", "TouchThumbstick",
+        "MobileUIContainer", "ControlFrame"
+    }
+    
+    -- 在PlayerGui中查找
+    for _, name in ipairs(possibleNames) do
+        local obj = pgui:FindFirstChild(name, true)
+        if obj then
+            controls[name] = obj
+            obj.Visible = false
+        end
+    end
+    
+    -- 尝试通过屏幕位置找到轮盘和跳跃键
+    local screenSize = gui.AbsoluteSize
+    for _, obj in ipairs(pgui:GetDescendants()) do
+        if obj:IsA("ImageButton") or obj:IsA("TextButton") or obj:IsA("Frame") then
+            if obj.AbsolutePosition.X < screenSize.X * 0.3 and obj.AbsolutePosition.Y > screenSize.Y * 0.4 then
+                -- 左下角的可能是轮盘
+                if obj:IsA("ImageButton") or obj:IsA("TextButton") then
+                    controls["Thumbstick"] = obj
+                    obj.Visible = false
+                end
+            end
+            if obj.AbsolutePosition.X > screenSize.X * 0.7 and obj.AbsolutePosition.Y > screenSize.Y * 0.5 then
+                -- 右下角的可能是跳跃键
+                if obj:IsA("ImageButton") or obj:IsA("TextButton") then
+                    controls["Jump"] = obj
+                    obj.Visible = false
+                end
+            end
+        end
+    end
+    
+    return controls
+end
+
+-- 恢复原版UI控件
+local hiddenControls = {}
+
+local function restoreMobileControls()
+    for _, obj in pairs(hiddenControls) do
+        if obj and obj.Parent then
+            obj.Visible = true
+        end
+    end
+    hiddenControls = {}
+end
+
+-- 设置角色趴下姿势
+local function setPronePose(char)
+    originalMotor6DValues = {}
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("Motor6D") then 
+            originalMotor6DValues[part] = {C0 = part.C0, C1 = part.C1} 
+        end
+    end
+    
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local rj = hrp:FindFirstChild("RootJoint") or hrp:FindFirstChild("Root")
+        if rj and rj:IsA("Motor6D") then 
+            rj.C0 = CFrame.new(0, -2, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+        end
+    end
+    
+    -- 调整四肢到趴下姿势
+    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if torso then
+        local rightShoulder = torso:FindFirstChild("RightShoulder") or torso:FindFirstChild("RightShoulder")
+        local leftShoulder = torso:FindFirstChild("LeftShoulder") or torso:FindFirstChild("LeftShoulder")
+        local rightHip = torso:FindFirstChild("RightHip") or torso:FindFirstChild("RightHip")
+        local leftHip = torso:FindFirstChild("LeftHip") or torso:FindFirstChild("LeftHip")
+        
+        if rightShoulder and rightShoulder:IsA("Motor6D") then
+            rightShoulder.C0 = CFrame.new(1, 0.5, 0.5) * CFrame.Angles(math.rad(0), math.rad(-90), math.rad(0))
+        end
+        if leftShoulder and leftShoulder:IsA("Motor6D") then
+            leftShoulder.C0 = CFrame.new(-1, 0.5, 0.5) * CFrame.Angles(math.rad(0), math.rad(90), math.rad(0))
+        end
+        if rightHip and rightHip:IsA("Motor6D") then
+            rightHip.C0 = CFrame.new(1, -0.5, 0) * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0))
+        end
+        if leftHip and leftHip:IsA("Motor6D") then
+            leftHip.C0 = CFrame.new(-1, -0.5, 0) * CFrame.Angles(math.rad(0), math.rad(0), math.rad(0))
+        end
+    end
+end
+
+-- 创建赛车控制面板
+local function createRaceControlPanel()
+    if racePanel then racePanel:Destroy() end
+    
+    racePanel = Instance.new("Frame", gui)
+    racePanel.Size = UDim2.new(0, 200, 0, 80)
+    racePanel.Position = UDim2.new(0.5, -100, 1, -160)
+    racePanel.BackgroundTransparency = 1
+    racePanel.ZIndex = 10002
+    
+    -- 后退按钮（左侧）
+    raceBackwardBtn = Instance.new("TextButton", racePanel)
+    raceBackwardBtn.Size = UDim2.new(0, 60, 0, 60)
+    raceBackwardBtn.Position = UDim2.new(0, 10, 0, 10)
+    raceBackwardBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    raceBackwardBtn.BackgroundTransparency = 0.3
+    raceBackwardBtn.Text = "◀\n后退"
+    raceBackwardBtn.TextColor3 = Color3.new(1, 1, 1)
+    raceBackwardBtn.TextSize = 16
+    raceBackwardBtn.Font = Enum.Font.GothamBold
+    raceBackwardBtn.AutoButtonColor = false
+    raceBackwardBtn.ZIndex = 10003
+    local backwardStroke = Instance.new("UIStroke", raceBackwardBtn)
+    backwardStroke.Color = Color3.fromRGB(255, 100, 100)
+    backwardStroke.Thickness = 2
+    
+    -- 前进按钮（右侧）
+    raceForwardBtn = Instance.new("TextButton", racePanel)
+    raceForwardBtn.Size = UDim2.new(0, 60, 0, 60)
+    raceForwardBtn.Position = UDim2.new(0, 130, 0, 10)
+    raceForwardBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    raceForwardBtn.BackgroundTransparency = 0.3
+    raceForwardBtn.Text = "▶\n前进"
+    raceForwardBtn.TextColor3 = Color3.new(1, 1, 1)
+    raceForwardBtn.TextSize = 16
+    raceForwardBtn.Font = Enum.Font.GothamBold
+    raceForwardBtn.AutoButtonColor = false
+    raceForwardBtn.ZIndex = 10003
+    local forwardStroke = Instance.new("UIStroke", raceForwardBtn)
+    forwardStroke.Color = Color3.fromRGB(100, 255, 100)
+    forwardStroke.Thickness = 2
+    
+    -- 冲刺按钮（替换跳跃键位置 - 右下角）
+    raceBoostBtn = Instance.new("TextButton", gui)
+    raceBoostBtn.Size = UDim2.new(0, 70, 0, 70)
+    raceBoostBtn.Position = UDim2.new(1, -90, 1, -160)
+    raceBoostBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+    raceBoostBtn.BackgroundTransparency = 0.3
+    raceBoostBtn.Text = "⚡\n冲刺"
+    raceBoostBtn.TextColor3 = Color3.new(1, 1, 1)
+    raceBoostBtn.TextSize = 16
+    raceBoostBtn.Font = Enum.Font.GothamBold
+    raceBoostBtn.AutoButtonColor = false
+    raceBoostBtn.ZIndex = 10003
+    raceBoostBtn.Visible = true
+    local boostStroke = Instance.new("UIStroke", raceBoostBtn)
+    boostStroke.Color = Color3.fromRGB(255, 200, 0)
+    boostStroke.Thickness = 3
+end
+
+-- 一键赛车功能
+local function enableRace()
+    local char = player.Character
+    if not char then return end
+    local h, rp = char:FindFirstChild("Humanoid"), char:FindFirstChild("HumanoidRootPart")
+    if not rp or not h then return end
+    
+    -- 保存原始属性
+    originalWalkSpeed = h.WalkSpeed
+    originalFriction = 0.5 -- 默认摩擦力
+    originalDensity = 1 -- 默认密度
+    
+    -- 设置大惯性和小摩擦力
+    if rp then
+        -- 保存并修改摩擦力
+        if rp:FindFirstChild("CustomPhysicalProperties") then
+            originalFriction = rp.CustomPhysicalProperties.Friction
+        end
+        rp.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.3, 0, 0, 0) -- 极低摩擦力
+    end
+    
+    -- 设置角色趴下姿势
+    setPronePose(char)
+    
+    -- 设置Humanoid属性
+    h.WalkSpeed = 30 -- 基础速度
+    h.JumpPower = 0 -- 禁用跳跃
+    h.AutoRotate = false
+    h.PlatformStand = false
+    
+    -- 隐藏原版控件
+    hiddenControls = findAndHideMobileControls()
+    
+    -- 创建赛车控制面板
+    createRaceControlPanel()
+    
+    -- 前进逻辑
+    local forwardConnection
+    raceForwardBtn.MouseButton1Down:Connect(function()
+        raceForward = true
+        raceBackward = false
+        if raceMoveConnection then raceMoveConnection:Disconnect() end
+        
+        raceMoveConnection = RunService.Heartbeat:Connect(function()
+            if not rp or not rp.Parent or not h or h.Health <= 0 then return end
+            
+            local moveSpeed = raceBoostActive and 150 or 30
+            h.WalkSpeed = moveSpeed
+            
+            -- 向角色前方移动
+            local lookVector = rp.CFrame.LookVector
+            local moveForce = Vector3.new(lookVector.X, 0, lookVector.Z).Unit * 2
+            rp.CFrame = rp.CFrame + moveForce * 0.3
+            
+            -- 大惯性效果 - 持续向前
+            local vel = rp.Velocity
+            if vel.Magnitude < moveSpeed then
+                rp.Velocity = vel * 1.02 + moveForce
+            end
+        end)
+    end)
+    
+    raceForwardBtn.MouseButton1Up:Connect(function()
+        raceForward = false
+        if raceMoveConnection and not raceBackward then
+            raceMoveConnection:Disconnect()
+            raceMoveConnection = nil
+        end
+    end)
+    
+    -- 后退逻辑
+    raceBackwardBtn.MouseButton1Down:Connect(function()
+        raceBackward = true
+        raceForward = false
+        if raceMoveConnection then raceMoveConnection:Disconnect() end
+        
+        raceMoveConnection = RunService.Heartbeat:Connect(function()
+            if not rp or not rp.Parent or not h or h.Health <= 0 then return end
+            
+            h.WalkSpeed = 20
+            
+            -- 向后移动
+            local lookVector = rp.CFrame.LookVector
+            local moveForce = -Vector3.new(lookVector.X, 0, lookVector.Z).Unit * 1.5
+            rp.CFrame = rp.CFrame + moveForce * 0.2
+        end)
+    end)
+    
+    raceBackwardBtn.MouseButton1Up:Connect(function()
+        raceBackward = false
+        if raceMoveConnection and not raceForward then
+            raceMoveConnection:Disconnect()
+            raceMoveConnection = nil
+        end
+    end)
+    
+    -- 冲刺逻辑
+    raceBoostBtn.MouseButton1Down:Connect(function()
+        if raceBoostActive then return end
+        raceBoostActive = true
+        
+        -- 冲刺效果：5倍速度持续1.5秒
+        if h then h.WalkSpeed = 150 end
+        
+        -- 喷气粒子效果
+        local exhaust = Instance.new("ParticleEmitter")
+        exhaust.Parent = rp
+        exhaust.Texture = "rbxasset://textures/particles/smoke_main.dds"
+        exhaust.Rate = 100
+        exhaust.Lifetime = NumberRange.new(0.3, 0.8)
+        exhaust.Speed = NumberRange.new(10, 20)
+        exhaust.SpreadAngle = Vector2.new(30, 30)
+        exhaust.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 150, 0)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 100)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+        })
+        
+        -- 冲刺推力
+        local lookVector = rp.CFrame.LookVector
+        if rp:FindFirstChild("BodyVelocity") then rp.BodyVelocity:Destroy() end
+        local bv = Instance.new("BodyVelocity", rp)
+        bv.MaxForce = Vector3.new(500000, 0, 500000)
+        bv.Velocity = Vector3.new(lookVector.X, 0, lookVector.Z).Unit * 150
+        
+        -- 冲刺按钮视觉反馈
+        raceBoostBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+        raceBoostBtn.BackgroundTransparency = 0.1
+        
+        -- 1.5秒后恢复
+        task.wait(1.5)
+        raceBoostActive = false
+        if bv and bv.Parent then bv:Destroy() end
+        if exhaust and exhaust.Parent then exhaust:Destroy() end
+        if h then h.WalkSpeed = 30 end
+        raceBoostBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+        raceBoostBtn.BackgroundTransparency = 0.3
+    end)
+    
+    raceEnabled = true
+end
+
+local function disableRace()
+    raceForward = false
+    raceBackward = false
+    raceBoostActive = false
+    
+    if raceMoveConnection then 
+        raceMoveConnection:Disconnect()
+        raceMoveConnection = nil
+    end
+    
+    if racePanel then 
+        racePanel:Destroy()
+        racePanel = nil
+        raceForwardBtn = nil
+        raceBackwardBtn = nil
+    end
+    
+    if raceBoostBtn then
+        raceBoostBtn:Destroy()
+        raceBoostBtn = nil
+    end
+    
+    -- 恢复原版控件
+    restoreMobileControls()
+    
+    -- 恢复角色
+    if player.Character then
+        restorePose(player.Character)
+        local h = player.Character:FindFirstChild("Humanoid")
+        local rp = player.Character:FindFirstChild("HumanoidRootPart")
+        
+        if h then
+            h.WalkSpeed = 16
+            h.JumpPower = 50
+            h.AutoRotate = true
+            h.PlatformStand = false
+        end
+        
+        if rp then
+            -- 恢复摩擦力
+            rp.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5, 0, 0)
+            
+            -- 清理物理对象
+            for _, child in ipairs(rp:GetChildren()) do
+                if child:IsA("BodyVelocity") or child:IsA("ParticleEmitter") then
+                    child:Destroy()
+                end
+            end
+        end
+    end
+    
+    raceEnabled = false
 end
 
 local function toggleSpeed()
@@ -844,6 +1201,10 @@ spinToggle.MouseButton1Down:Connect(function()
     if spinEnabled then disableSpin() else enableSpin() end
     updateToggle(spinToggle, spinEnabled)
 end)
+raceToggle.MouseButton1Down:Connect(function()
+    if raceEnabled then disableRace() else enableRace() end
+    updateToggle(raceToggle, raceEnabled)
+end)
 espToggle.MouseButton1Down:Connect(function()
     if espEnabled then disableESP() else enableESP() end
     updateToggle(espToggle, espEnabled)
@@ -891,7 +1252,7 @@ aimTriggerMoveBtn.MouseButton1Down:Connect(function()
     end
 end)
 
--- 自瞄触发按钮：按下激活，松开停用（Active = false 确保穿透点击）
+-- 自瞄触发按钮
 aimTriggerBtn.MouseButton1Down:Connect(function()
     if not aimTriggerMoving then aimbotActive = true end
 end)
@@ -968,6 +1329,7 @@ player.CharacterAdded:Connect(function(char)
     if climbEnabled then if climbConnection then climbConnection:Disconnect() end enableClimb() end
     if flyEnabled then disableFly(); task.wait(0.1); enableFly() end
     if spinEnabled then if spinConnection then spinConnection:Disconnect() end enableSpin() end
+    if raceEnabled then disableRace(); task.wait(0.2); enableRace() end
     if playerCollisionEnabled then if collisionConnection then collisionConnection:Disconnect() end enablePlayerCollision() end
     if dodgeEnabled then if dodgeConnection then dodgeConnection:Disconnect() end enableDodge() end
     if orbitEnabled then if orbitConnection then orbitConnection:Disconnect() end enableOrbit() end
@@ -978,10 +1340,10 @@ Players.PlayerRemoving:Connect(function(plr)
 end)
 
 -- 初始化
-for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle}) do
+for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, raceToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle}) do
     updateToggle(t, false)
 end
 setSpeed(50); setFlySpeed(50); setFlyPanelSize(100); setSpinSpeed(50); setDodgeRadius(15)
 setOrbitRadius(20); setOrbitDistance(5); setOrbitSpeed(10); setAimbotRadius(200); setAimTriggerSize(200)
 
-print("OK")
+print("OK - 一键赛车功能已加载")
