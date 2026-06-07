@@ -1,12 +1,13 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local TeleportService = game:GetService("TeleportService")
 
 local player = Players.LocalPlayer
+
+-- 等待PlayerGui加载
 local pgui = player:WaitForChild("PlayerGui")
 
+-- 确保脚本在LocalScript中运行
 local speedEnabled, originalWalkSpeed, currentSpeed = false, 16, 50
 local climbEnabled, climbConnection = false, nil
 local flyEnabled, flyConnection, flySpeed, flyControlPanel, moveDirection, moveConnections, originalMotor6DValues = false, nil, 50, nil, Vector3.zero, {}, {}
@@ -20,6 +21,12 @@ local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStr
 local raceEnabled, raceConnection, raceBoostActive, originalWalkSpeedRace, originalJumpPower = false, nil, false, 16, 50
 local raceBoostBtn, raceBoostCooldown = nil, false
 local teleportEnabled, teleportWindow, teleportPlayerList, selectedTeleportPlayer, originalPosition = false, nil, nil, nil, nil
+local refreshTeleportList = nil
+local teleportRefreshConnection = nil
+
+-- 清理旧UI
+local oldGui = pgui:FindFirstChild("ProFloatUI")
+if oldGui then oldGui:Destroy() end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -28,6 +35,9 @@ gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 999999
+
+-- 确保UI在最前面
+gui.Enabled = true
 
 local ball = Instance.new("TextButton")
 ball.Parent = gui
@@ -41,6 +51,8 @@ ball.TextColor3 = Color3.new(1, 1, 1)
 ball.TextSize = 14
 ball.Font = Enum.Font.GothamBold
 ball.ZIndex = 10000
+ball.Visible = true
+ball.Active = true
 
 local menu = Instance.new("Frame")
 menu.Parent = gui
@@ -190,6 +202,7 @@ local function createTeleportWindow()
     teleportWindow.BorderSizePixel = 0
     teleportWindow.ZIndex = 10010
     teleportWindow.Visible = false
+    teleportWindow.Active = true
     
     -- 标题栏
     local titleBar = Instance.new("Frame", teleportWindow)
@@ -221,7 +234,8 @@ local function createTeleportWindow()
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.AutoButtonColor = false
     closeBtn.ZIndex = 10012
-    closeBtn.MouseButton1Down:Connect(function()
+    closeBtn.Active = true
+    closeBtn.MouseButton1Click:Connect(function()
         teleportEnabled = false
         teleportWindow.Visible = false
         updateToggle(teleportToggle, false)
@@ -242,14 +256,15 @@ local function createTeleportWindow()
             dragging = false
         end
     end)
-    RunService.Heartbeat:Connect(function()
+    UserInputService.InputChanged:Connect(function(input)
         if dragging and dragPos and dragStart then
-            local mp = UserInputService:GetMouseLocation()
-            local delta = Vector2.new(mp.X, mp.Y) - dragStart
-            teleportWindow.Position = UDim2.fromOffset(
-                math.clamp((dragPos + delta).X, 0, gui.AbsoluteSize.X - 280),
-                math.clamp((dragPos + delta).Y, 0, gui.AbsoluteSize.Y - 350)
-            )
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = Vector2.new(input.Position.X, input.Position.Y) - dragStart
+                teleportWindow.Position = UDim2.fromOffset(
+                    math.clamp((dragPos + delta).X, 0, gui.AbsoluteSize.X - 280),
+                    math.clamp((dragPos + delta).Y, 0, gui.AbsoluteSize.Y - 350)
+                )
+            end
         end
     end)
     
@@ -267,6 +282,7 @@ local function createTeleportWindow()
     listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     listFrame.ScrollingDirection = Enum.ScrollingDirection.Y
     listFrame.ZIndex = 10011
+    listFrame.Active = true
     
     local listLayout = Instance.new("UIListLayout", listFrame)
     listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -308,6 +324,7 @@ local function createTeleportWindow()
     teleportBtn.Font = Enum.Font.GothamBold
     teleportBtn.AutoButtonColor = false
     teleportBtn.ZIndex = 10012
+    teleportBtn.Active = true
     
     -- 恢复按钮
     local restoreBtn = Instance.new("TextButton", btnFrame)
@@ -321,9 +338,10 @@ local function createTeleportWindow()
     restoreBtn.Font = Enum.Font.GothamBold
     restoreBtn.AutoButtonColor = false
     restoreBtn.ZIndex = 10012
+    restoreBtn.Active = true
     
     -- 传送按钮事件
-    teleportBtn.MouseButton1Down:Connect(function()
+    teleportBtn.MouseButton1Click:Connect(function()
         if not selectedTeleportPlayer then return end
         local targetChar = selectedTeleportPlayer.Character
         if not targetChar then return end
@@ -337,7 +355,7 @@ local function createTeleportWindow()
         -- 保存原始位置
         originalPosition = myRoot.CFrame
         
-        -- 真实传送到目标头顶（上方5个studs）
+        -- 真实传送到目标头顶
         local targetPos = targetRoot.Position + Vector3.new(0, 5, 0)
         myRoot.CFrame = CFrame.new(targetPos)
         
@@ -353,7 +371,7 @@ local function createTeleportWindow()
     end)
     
     -- 恢复按钮事件
-    restoreBtn.MouseButton1Down:Connect(function()
+    restoreBtn.MouseButton1Click:Connect(function()
         if not originalPosition then return end
         local myChar = player.Character
         if not myChar then return end
@@ -375,44 +393,51 @@ local function createTeleportWindow()
         end)
     end)
     
-    -- 定时刷新玩家列表
+    -- 刷新玩家列表函数
     local function refreshPlayerList()
         if not teleportWindow or not teleportWindow.Visible then return end
+        if not listFrame or not listFrame.Parent then return end
         
-        -- 清空列表（保留Layout）
+        -- 清空列表
         for _, child in ipairs(listFrame:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
+            if child:IsA("TextButton") or child:IsA("TextLabel") then 
+                child:Destroy() 
+            end
         end
         
         -- 添加所有其他玩家
         local playerCount = 0
-        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+        local players = Players:GetPlayers()
+        
+        for _, otherPlayer in ipairs(players) do
             if otherPlayer ~= player then
                 playerCount = playerCount + 1
                 local playerBtn = Instance.new("TextButton", listFrame)
-                playerBtn.Size = UDim2.new(1, -10, 0, 32)
+                playerBtn.Size = UDim2.new(1, -10, 0, 36)
                 playerBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
                 playerBtn.BackgroundTransparency = 0.4
                 playerBtn.BorderSizePixel = 0
-                playerBtn.Text = "👤 " .. otherPlayer.Name .. "  [ID:" .. otherPlayer.UserId .. "]"
+                playerBtn.Text = "👤 " .. otherPlayer.Name
                 playerBtn.TextColor3 = Color3.new(1, 1, 1)
-                playerBtn.TextSize = 12
+                playerBtn.TextSize = 13
                 playerBtn.Font = Enum.Font.Gotham
                 playerBtn.TextXAlignment = Enum.TextXAlignment.Left
                 playerBtn.AutoButtonColor = false
                 playerBtn.ZIndex = 10012
                 playerBtn.LayoutOrder = playerCount
+                playerBtn.Active = true
                 
                 -- 玩家状态指示
                 if otherPlayer.Character and otherPlayer.Character:FindFirstChild("Humanoid") then
                     local health = otherPlayer.Character.Humanoid.Health
                     if health > 0 then
                         playerBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+                        playerBtn.Text = "🟢 " .. otherPlayer.Name
                     end
                 end
                 
                 -- 选中效果
-                playerBtn.MouseButton1Down:Connect(function()
+                playerBtn.MouseButton1Click:Connect(function()
                     selectedTeleportPlayer = otherPlayer
                     
                     -- 更新所有按钮背景
@@ -445,23 +470,14 @@ local function createTeleportWindow()
             noPlayerLabel.ZIndex = 10012
         end
         
-        listFrame.CanvasSize = UDim2.new(0, 0, 0, playerCount * 36 + 8)
+        listFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(playerCount, 1) * 40 + 8)
     end
-    
-    -- 定时刷新
-    RunService.Heartbeat:Connect(function()
-        if teleportWindow and teleportWindow.Visible then
-            -- 每2秒刷新一次
-            if tick() % 2 < 0.05 then
-                refreshPlayerList()
-            end
-        end
-    end)
     
     return refreshPlayerList
 end
 
-local refreshTeleportList = createTeleportWindow()
+-- 初始化传送窗口
+refreshTeleportList = createTeleportWindow()
 
 -- 卡片创建
 local speedCard = createCard(scrollingFrame, 1, 100)
@@ -834,11 +850,12 @@ local function enableRace()
     raceBoostBtn.Font = Enum.Font.GothamBold
     raceBoostBtn.AutoButtonColor = false
     raceBoostBtn.ZIndex = 10010
+    raceBoostBtn.Active = true
     local boostStroke = Instance.new("UIStroke", raceBoostBtn)
     boostStroke.Color = Color3.fromRGB(255, 200, 0)
     boostStroke.Thickness = 4
     
-    raceBoostBtn.MouseButton1Down:Connect(function()
+    raceBoostBtn.MouseButton1Click:Connect(function()
         if raceBoostCooldown or not rp or not rp.Parent then return end
         raceBoostActive = true
         raceBoostCooldown = true
@@ -947,8 +964,10 @@ local function enableTeleport()
         selectedTeleportPlayer = nil
         originalPosition = nil
         
-        -- 刷新列表
-        if refreshTeleportList then refreshTeleportList() end
+        -- 立即刷新列表
+        if refreshTeleportList then 
+            refreshTeleportList() 
+        end
         
         -- 重置选中标签
         local selectedLabel = teleportWindow:FindFirstChild("SelectedLabel")
@@ -956,6 +975,19 @@ local function enableTeleport()
             selectedLabel.Text = "未选择目标"
             selectedLabel.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
         end
+        
+        -- 定时刷新列表
+        if teleportRefreshConnection then
+            teleportRefreshConnection:Disconnect()
+        end
+        teleportRefreshConnection = RunService.Heartbeat:Connect(function()
+            -- 每2秒刷新一次
+            if teleportWindow.Visible and math.floor(tick() * 10) % 20 == 0 then
+                if refreshTeleportList then
+                    refreshTeleportList()
+                end
+            end
+        end)
     end
 end
 
@@ -963,6 +995,10 @@ local function disableTeleport()
     teleportEnabled = false
     if teleportWindow then
         teleportWindow.Visible = false
+    end
+    if teleportRefreshConnection then
+        teleportRefreshConnection:Disconnect()
+        teleportRefreshConnection = nil
     end
     selectedTeleportPlayer = nil
     originalPosition = nil
@@ -1033,6 +1069,7 @@ local function createFlyControlPanel()
     flyControlPanel.BackgroundTransparency = 0.3
     flyControlPanel.BorderSizePixel = 0
     flyControlPanel.ZIndex = 10001
+    flyControlPanel.Active = true
     local dragBar = Instance.new("TextButton", flyControlPanel)
     dragBar.Size = UDim2.new(1, 0, 0, 15)
     dragBar.BackgroundTransparency = 0.5
@@ -1041,6 +1078,7 @@ local function createFlyControlPanel()
     dragBar.TextSize = 12
     dragBar.Font = Enum.Font.GothamBold
     dragBar.ZIndex = 10002
+    dragBar.Active = true
     local pd, psp, pst = false, nil, nil
     dragBar.InputBegan:Connect(function(input, gpe)
         if gpe then return end
@@ -1051,12 +1089,14 @@ local function createFlyControlPanel()
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then pd = false end
     end)
-    RunService.Heartbeat:Connect(function()
+    UserInputService.InputChanged:Connect(function(input)
         if pd and psp and pst then
-            local mp = UserInputService:GetMouseLocation()
-            if mp then
-                local d = Vector2.new(mp.X, mp.Y) - pst
-                flyControlPanel.Position = UDim2.fromOffset(math.clamp((psp + d).X, 0, gui.AbsoluteSize.X - psize), math.clamp((psp + d).Y, 0, gui.AbsoluteSize.Y - psize * 1.6))
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = Vector2.new(input.Position.X, input.Position.Y) - pst
+                flyControlPanel.Position = UDim2.fromOffset(
+                    math.clamp((psp + delta).X, 0, gui.AbsoluteSize.X - psize), 
+                    math.clamp((psp + delta).Y, 0, gui.AbsoluteSize.Y - psize * 1.6)
+                )
             end
         end
     end)
@@ -1066,6 +1106,7 @@ local function createFlyControlPanel()
         b.BackgroundColor3 = color; b.BackgroundTransparency = 0.3
         b.Text = text; b.TextColor3 = Color3.new(1, 1, 1); b.TextSize = 14
         b.Font = Enum.Font.GothamBold; b.ZIndex = 10002
+        b.Active = true
         return b
     end
     local btnSize = psize * 0.25
@@ -1355,50 +1396,50 @@ setupSlider(orbitDistanceBtn, orbitDistanceSlider, setOrbitDistance, 2, 20)
 setupSlider(orbitSpeedBtn, orbitSpeedSlider, setOrbitSpeed, 1, 100)
 
 -- 开关绑定
-speedToggle.MouseButton1Down:Connect(toggleSpeed)
-climbToggle.MouseButton1Down:Connect(function()
+speedToggle.MouseButton1Click:Connect(toggleSpeed)
+climbToggle.MouseButton1Click:Connect(function()
     if climbEnabled then disableClimb() else enableClimb() end
     updateToggle(climbToggle, climbEnabled)
 end)
-flyToggle.MouseButton1Down:Connect(function()
+flyToggle.MouseButton1Click:Connect(function()
     if flyEnabled then disableFly() else enableFly() end
     updateToggle(flyToggle, flyEnabled)
 end)
-spinToggle.MouseButton1Down:Connect(function()
+spinToggle.MouseButton1Click:Connect(function()
     if spinEnabled then disableSpin() else enableSpin() end
     updateToggle(spinToggle, spinEnabled)
 end)
-raceToggle.MouseButton1Down:Connect(function()
+raceToggle.MouseButton1Click:Connect(function()
     if raceEnabled then disableRace() else enableRace() end
     updateToggle(raceToggle, raceEnabled)
 end)
-teleportToggle.MouseButton1Down:Connect(function()
+teleportToggle.MouseButton1Click:Connect(function()
     if teleportEnabled then disableTeleport() else enableTeleport() end
     updateToggle(teleportToggle, teleportEnabled)
 end)
-espToggle.MouseButton1Down:Connect(function()
+espToggle.MouseButton1Click:Connect(function()
     if espEnabled then disableESP() else enableESP() end
     updateToggle(espToggle, espEnabled)
 end)
-collisionToggle.MouseButton1Down:Connect(function()
+collisionToggle.MouseButton1Click:Connect(function()
     if playerCollisionEnabled then disablePlayerCollision() else enablePlayerCollision() end
     updateToggle(collisionToggle, playerCollisionEnabled)
 end)
-aimbotToggle.MouseButton1Down:Connect(function()
+aimbotToggle.MouseButton1Click:Connect(function()
     if aimbotEnabled then disableAimbot() else enableAimbot() end
     updateToggle(aimbotToggle, aimbotEnabled)
 end)
-dodgeToggle.MouseButton1Down:Connect(function()
+dodgeToggle.MouseButton1Click:Connect(function()
     if dodgeEnabled then disableDodge() else enableDodge() end
     updateToggle(dodgeToggle, dodgeEnabled)
 end)
-orbitToggle.MouseButton1Down:Connect(function()
+orbitToggle.MouseButton1Click:Connect(function()
     if orbitEnabled then disableOrbit() else enableOrbit() end
     updateToggle(orbitToggle, orbitEnabled)
 end)
 
 -- 显示触发按钮
-aimTriggerToggle.MouseButton1Down:Connect(function()
+aimTriggerToggle.MouseButton1Click:Connect(function()
     aimTriggerVisible = not aimTriggerVisible
     aimTriggerToggle.Text = "显示触发: " .. (aimTriggerVisible and "开" or "关")
     aimTriggerToggle.BackgroundColor3 = aimTriggerVisible and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(80, 80, 80)
@@ -1407,7 +1448,7 @@ aimTriggerToggle.MouseButton1Down:Connect(function()
 end)
 
 -- 触发移动按钮
-aimTriggerMoveBtn.MouseButton1Down:Connect(function()
+aimTriggerMoveBtn.MouseButton1Click:Connect(function()
     aimTriggerMoving = not aimTriggerMoving
     aimTriggerMoveBtn.Text = "触发移动: " .. (aimTriggerMoving and "开" or "关")
     aimTriggerMoveBtn.BackgroundColor3 = aimTriggerMoving and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(80, 80, 80)
@@ -1478,18 +1519,28 @@ ball.InputEnded:Connect(function(input, gpe)
     end
 end)
 
-RunService.Heartbeat:Connect(function()
+UserInputService.InputChanged:Connect(function(input)
     if triggerDragging and triggerDragStartPos and triggerDragStartTouch then
-        local mp = UserInputService:GetMouseLocation()
-        local delta = Vector2.new(mp.X, mp.Y) - triggerDragStartTouch
-        local newPos = triggerDragStartPos + delta
-        aimTriggerBtn.Position = UDim2.fromOffset(math.clamp(newPos.X, 0, gui.AbsoluteSize.X - aimTriggerSize), math.clamp(newPos.Y, 0, gui.AbsoluteSize.Y - aimTriggerSize))
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = Vector2.new(input.Position.X, input.Position.Y) - triggerDragStartTouch
+            local newPos = triggerDragStartPos + delta
+            aimTriggerBtn.Position = UDim2.fromOffset(
+                math.clamp(newPos.X, 0, gui.AbsoluteSize.X - aimTriggerSize), 
+                math.clamp(newPos.Y, 0, gui.AbsoluteSize.Y - aimTriggerSize)
+            )
+        end
     end
     if ballDragging and ballStartPos and ballStartTouch then
-        local mp = UserInputService:GetMouseLocation()
-        local d = Vector2.new(mp.X, mp.Y) - ballStartTouch
-        ball.Position = UDim2.fromOffset(math.clamp((ballStartPos + d).X, 0, gui.AbsoluteSize.X - 50), math.clamp((ballStartPos + d).Y, 0, gui.AbsoluteSize.Y - 50))
-        if menuOpen then menu.Position = ball.Position + UDim2.new(0, 60, 0, 0) end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = Vector2.new(input.Position.X, input.Position.Y) - ballStartTouch
+            ball.Position = UDim2.fromOffset(
+                math.clamp((ballStartPos + delta).X, 0, gui.AbsoluteSize.X - 50), 
+                math.clamp((ballStartPos + delta).Y, 0, gui.AbsoluteSize.Y - 50)
+            )
+            if menuOpen then 
+                menu.Position = ball.Position + UDim2.new(0, 60, 0, 0) 
+            end
+        end
     end
 end)
 
@@ -1517,4 +1568,4 @@ end
 setSpeed(50); setFlySpeed(50); setFlyPanelSize(100); setSpinSpeed(50); setDodgeRadius(15)
 setOrbitRadius(20); setOrbitDistance(5); setOrbitSpeed(10); setAimbotRadius(200); setAimTriggerSize(200)
 
-print("OK - 一键传送功能已加载")
+print("OK - UI已修复并加载完成")
