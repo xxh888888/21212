@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
 
 local player = Players.LocalPlayer
 local pgui = player:WaitForChild("PlayerGui")
@@ -16,8 +17,9 @@ local aimbotEnabled, aimbotConnection, aimbotRadius, aimbotActive = false, nil, 
 local dodgeEnabled, dodgeConnection, dodgeRadius = false, nil, 15
 local orbitEnabled, orbitConnection, orbitRadius, orbitSpeed, orbitDistance, orbitTarget = false, nil, 20, 10, 5, nil
 local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStrength = false, false, UDim2.new(0.5, -100, 0.5, -100), 200, 1
-local raceEnabled, raceConnection, raceBoostActive, originalWalkSpeedRace, originalJumpPower, originalFriction, originalDensity = false, nil, false, 16, 50, nil, nil
+local raceEnabled, raceConnection, raceBoostActive, originalWalkSpeedRace, originalJumpPower = false, nil, false, 16, 50
 local raceBoostBtn, raceBoostCooldown = nil, false
+local teleportEnabled, teleportWindow, teleportPlayerList, selectedTeleportPlayer, originalPosition = false, nil, nil, nil, nil
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -42,7 +44,7 @@ ball.ZIndex = 10000
 
 local menu = Instance.new("Frame")
 menu.Parent = gui
-menu.Size = UDim2.new(0, 360, 0, 420)
+menu.Size = UDim2.new(0, 360, 0, 460)
 menu.Position = ball.Position + UDim2.new(0, 60, 0, 0)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.BackgroundTransparency = 0.1
@@ -176,6 +178,291 @@ aimTriggerLabel.TextColor3 = Color3.new(1, 1, 1)
 aimTriggerLabel.TextSize = 14
 aimTriggerLabel.Font = Enum.Font.GothamBold
 
+-- 一键传送窗口
+local function createTeleportWindow()
+    if teleportWindow then teleportWindow:Destroy() end
+    
+    teleportWindow = Instance.new("Frame", gui)
+    teleportWindow.Size = UDim2.new(0, 280, 0, 350)
+    teleportWindow.Position = UDim2.new(0.5, -140, 0.5, -175)
+    teleportWindow.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    teleportWindow.BackgroundTransparency = 0.1
+    teleportWindow.BorderSizePixel = 0
+    teleportWindow.ZIndex = 10010
+    teleportWindow.Visible = false
+    
+    -- 标题栏
+    local titleBar = Instance.new("Frame", teleportWindow)
+    titleBar.Size = UDim2.new(1, 0, 0, 35)
+    titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    titleBar.BorderSizePixel = 0
+    titleBar.ZIndex = 10011
+    
+    local titleText = Instance.new("TextLabel", titleBar)
+    titleText.Size = UDim2.new(1, -40, 1, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "🎯 一键传送"
+    titleText.TextColor3 = Color3.new(1, 1, 1)
+    titleText.TextSize = 16
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Position = UDim2.new(0, 12, 0, 0)
+    titleText.ZIndex = 10011
+    
+    -- 关闭按钮
+    local closeBtn = Instance.new("TextButton", titleBar)
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -35, 0, 2)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeBtn.BackgroundTransparency = 0.3
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.TextSize = 16
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.AutoButtonColor = false
+    closeBtn.ZIndex = 10012
+    closeBtn.MouseButton1Down:Connect(function()
+        teleportEnabled = false
+        teleportWindow.Visible = false
+        updateToggle(teleportToggle, false)
+    end)
+    
+    -- 可拖拽
+    local dragStart, dragPos, dragging = nil, nil, false
+    titleBar.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragPos = teleportWindow.AbsolutePosition
+            dragStart = Vector2.new(input.Position.X, input.Position.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    RunService.Heartbeat:Connect(function()
+        if dragging and dragPos and dragStart then
+            local mp = UserInputService:GetMouseLocation()
+            local delta = Vector2.new(mp.X, mp.Y) - dragStart
+            teleportWindow.Position = UDim2.fromOffset(
+                math.clamp((dragPos + delta).X, 0, gui.AbsoluteSize.X - 280),
+                math.clamp((dragPos + delta).Y, 0, gui.AbsoluteSize.Y - 350)
+            )
+        end
+    end)
+    
+    -- 玩家列表区域
+    local listFrame = Instance.new("ScrollingFrame", teleportWindow)
+    listFrame.Size = UDim2.new(1, -20, 0, 200)
+    listFrame.Position = UDim2.new(0, 10, 0, 45)
+    listFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    listFrame.BackgroundTransparency = 0.3
+    listFrame.BorderSizePixel = 0
+    listFrame.ScrollBarThickness = 5
+    listFrame.ScrollBarImageColor3 = Color3.fromRGB(150, 150, 200)
+    listFrame.ScrollBarImageTransparency = 0.3
+    listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    listFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    listFrame.ZIndex = 10011
+    
+    local listLayout = Instance.new("UIListLayout", listFrame)
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    listLayout.Padding = UDim.new(0, 4)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    teleportPlayerList = listFrame
+    
+    -- 选中玩家显示
+    local selectedLabel = Instance.new("TextLabel", teleportWindow)
+    selectedLabel.Size = UDim2.new(1, -20, 0, 30)
+    selectedLabel.Position = UDim2.new(0, 10, 0, 250)
+    selectedLabel.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+    selectedLabel.BackgroundTransparency = 0.5
+    selectedLabel.BorderSizePixel = 0
+    selectedLabel.Text = "未选择目标"
+    selectedLabel.TextColor3 = Color3.new(1, 1, 1)
+    selectedLabel.TextSize = 14
+    selectedLabel.Font = Enum.Font.GothamBold
+    selectedLabel.ZIndex = 10011
+    selectedLabel.Name = "SelectedLabel"
+    
+    -- 按钮区域
+    local btnFrame = Instance.new("Frame", teleportWindow)
+    btnFrame.Size = UDim2.new(1, -20, 0, 40)
+    btnFrame.Position = UDim2.new(0, 10, 0, 290)
+    btnFrame.BackgroundTransparency = 1
+    btnFrame.ZIndex = 10011
+    
+    -- 传送按钮
+    local teleportBtn = Instance.new("TextButton", btnFrame)
+    teleportBtn.Size = UDim2.new(0, 120, 1, 0)
+    teleportBtn.Position = UDim2.new(0, 0, 0, 0)
+    teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+    teleportBtn.BackgroundTransparency = 0.3
+    teleportBtn.Text = "📍 传送"
+    teleportBtn.TextColor3 = Color3.new(1, 1, 1)
+    teleportBtn.TextSize = 14
+    teleportBtn.Font = Enum.Font.GothamBold
+    teleportBtn.AutoButtonColor = false
+    teleportBtn.ZIndex = 10012
+    
+    -- 恢复按钮
+    local restoreBtn = Instance.new("TextButton", btnFrame)
+    restoreBtn.Size = UDim2.new(0, 120, 1, 0)
+    restoreBtn.Position = UDim2.new(1, -120, 0, 0)
+    restoreBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 0)
+    restoreBtn.BackgroundTransparency = 0.3
+    restoreBtn.Text = "↩ 恢复"
+    restoreBtn.TextColor3 = Color3.new(1, 1, 1)
+    restoreBtn.TextSize = 14
+    restoreBtn.Font = Enum.Font.GothamBold
+    restoreBtn.AutoButtonColor = false
+    restoreBtn.ZIndex = 10012
+    
+    -- 传送按钮事件
+    teleportBtn.MouseButton1Down:Connect(function()
+        if not selectedTeleportPlayer then return end
+        local targetChar = selectedTeleportPlayer.Character
+        if not targetChar then return end
+        local targetRoot = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Head")
+        if not targetRoot then return end
+        local myChar = player.Character
+        if not myChar then return end
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+        
+        -- 保存原始位置
+        originalPosition = myRoot.CFrame
+        
+        -- 真实传送到目标头顶（上方5个studs）
+        local targetPos = targetRoot.Position + Vector3.new(0, 5, 0)
+        myRoot.CFrame = CFrame.new(targetPos)
+        
+        -- 视觉反馈
+        teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+        teleportBtn.BackgroundTransparency = 0
+        task.delay(0.3, function()
+            if teleportBtn and teleportBtn.Parent then
+                teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+                teleportBtn.BackgroundTransparency = 0.3
+            end
+        end)
+    end)
+    
+    -- 恢复按钮事件
+    restoreBtn.MouseButton1Down:Connect(function()
+        if not originalPosition then return end
+        local myChar = player.Character
+        if not myChar then return end
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+        
+        -- 恢复到原始位置
+        myRoot.CFrame = originalPosition
+        originalPosition = nil
+        
+        -- 视觉反馈
+        restoreBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+        restoreBtn.BackgroundTransparency = 0
+        task.delay(0.3, function()
+            if restoreBtn and restoreBtn.Parent then
+                restoreBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 0)
+                restoreBtn.BackgroundTransparency = 0.3
+            end
+        end)
+    end)
+    
+    -- 定时刷新玩家列表
+    local function refreshPlayerList()
+        if not teleportWindow or not teleportWindow.Visible then return end
+        
+        -- 清空列表（保留Layout）
+        for _, child in ipairs(listFrame:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        
+        -- 添加所有其他玩家
+        local playerCount = 0
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player then
+                playerCount = playerCount + 1
+                local playerBtn = Instance.new("TextButton", listFrame)
+                playerBtn.Size = UDim2.new(1, -10, 0, 32)
+                playerBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+                playerBtn.BackgroundTransparency = 0.4
+                playerBtn.BorderSizePixel = 0
+                playerBtn.Text = "👤 " .. otherPlayer.Name .. "  [ID:" .. otherPlayer.UserId .. "]"
+                playerBtn.TextColor3 = Color3.new(1, 1, 1)
+                playerBtn.TextSize = 12
+                playerBtn.Font = Enum.Font.Gotham
+                playerBtn.TextXAlignment = Enum.TextXAlignment.Left
+                playerBtn.AutoButtonColor = false
+                playerBtn.ZIndex = 10012
+                playerBtn.LayoutOrder = playerCount
+                
+                -- 玩家状态指示
+                if otherPlayer.Character and otherPlayer.Character:FindFirstChild("Humanoid") then
+                    local health = otherPlayer.Character.Humanoid.Health
+                    if health > 0 then
+                        playerBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 60)
+                    end
+                end
+                
+                -- 选中效果
+                playerBtn.MouseButton1Down:Connect(function()
+                    selectedTeleportPlayer = otherPlayer
+                    
+                    -- 更新所有按钮背景
+                    for _, btn in ipairs(listFrame:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+                            btn.BackgroundTransparency = 0.4
+                        end
+                    end
+                    
+                    -- 高亮选中按钮
+                    playerBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
+                    playerBtn.BackgroundTransparency = 0.2
+                    
+                    -- 更新选中标签
+                    selectedLabel.Text = "✅ 已选择: " .. otherPlayer.Name
+                    selectedLabel.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+                end)
+            end
+        end
+        
+        if playerCount == 0 then
+            local noPlayerLabel = Instance.new("TextLabel", listFrame)
+            noPlayerLabel.Size = UDim2.new(1, 0, 0, 40)
+            noPlayerLabel.BackgroundTransparency = 1
+            noPlayerLabel.Text = "当前没有其他玩家"
+            noPlayerLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            noPlayerLabel.TextSize = 13
+            noPlayerLabel.Font = Enum.Font.Gotham
+            noPlayerLabel.ZIndex = 10012
+        end
+        
+        listFrame.CanvasSize = UDim2.new(0, 0, 0, playerCount * 36 + 8)
+    end
+    
+    -- 定时刷新
+    RunService.Heartbeat:Connect(function()
+        if teleportWindow and teleportWindow.Visible then
+            -- 每2秒刷新一次
+            if tick() % 2 < 0.05 then
+                refreshPlayerList()
+            end
+        end
+    end)
+    
+    return refreshPlayerList
+end
+
+local refreshTeleportList = createTeleportWindow()
+
 -- 卡片创建
 local speedCard = createCard(scrollingFrame, 1, 100)
 local speedHeader, speedToggle = createHeader(speedCard, "加速")
@@ -236,13 +523,16 @@ spinSlider.Position = UDim2.new(0, 10, 0, 56)
 local raceCard = createCard(scrollingFrame, 5, 42)
 local raceHeader, raceToggle = createHeader(raceCard, "一键赛车")
 
-local espCard = createCard(scrollingFrame, 6, 42)
+local teleportCard = createCard(scrollingFrame, 6, 42)
+local teleportHeader, teleportToggle = createHeader(teleportCard, "一键传送")
+
+local espCard = createCard(scrollingFrame, 7, 42)
 local espHeader, espToggle = createHeader(espCard, "人物内透")
 
-local collisionCard = createCard(scrollingFrame, 7, 42)
+local collisionCard = createCard(scrollingFrame, 8, 42)
 local collisionHeader, collisionToggle = createHeader(collisionCard, "强制碰撞")
 
-local aimbotCard = createCard(scrollingFrame, 8, 195)
+local aimbotCard = createCard(scrollingFrame, 9, 195)
 local aimbotHeader, aimbotToggle = createHeader(aimbotCard, "人物自瞄")
 local aimTriggerToggle = Instance.new("TextButton", aimbotCard)
 aimTriggerToggle.Size = UDim2.new(1, -20, 0, 22)
@@ -287,7 +577,7 @@ aimTriggerSizeDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local aimTriggerSizeSlider, aimTriggerSizeFill, aimTriggerSizeBtn, _ = createSlider(aimbotCard, 80, 400, 200)
 aimTriggerSizeSlider.Position = UDim2.new(0, 10, 0, 164)
 
-local dodgeCard = createCard(scrollingFrame, 9, 100)
+local dodgeCard = createCard(scrollingFrame, 10, 100)
 local dodgeHeader, dodgeToggle = createHeader(dodgeCard, "人物躲避")
 local dodgeRadiusDisplay = Instance.new("TextLabel", dodgeCard)
 dodgeRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
@@ -301,7 +591,7 @@ dodgeRadiusDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local dodgeSlider, dodgeFill, dodgeBtn, dodgeValue = createSlider(dodgeCard, 5, 50, 15)
 dodgeSlider.Position = UDim2.new(0, 10, 0, 56)
 
-local orbitCard = createCard(scrollingFrame, 10, 175)
+local orbitCard = createCard(scrollingFrame, 11, 175)
 local orbitHeader, orbitToggle = createHeader(orbitCard, "围绕旋转")
 local orbitRadiusDisplay = Instance.new("TextLabel", orbitCard)
 orbitRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
@@ -496,60 +786,43 @@ local function enableRace()
     local h, rp = char:FindFirstChild("Humanoid"), char:FindFirstChild("HumanoidRootPart")
     if not rp or not h then return end
     
-    -- 保存原始属性
     originalWalkSpeedRace = h.WalkSpeed
     originalJumpPower = h.JumpPower
     
-    -- 设置角色趴下姿势
     setPronePose(char)
     
-    -- 设置Humanoid属性 - 极快速度，禁用跳跃
     h.WalkSpeed = 50
     h.JumpPower = 0
     
-    -- 极大惯性 + 极小摩擦力
-    -- 设置RootPart物理属性：密度极小=惯性极大，摩擦极小=滑行
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and part.CanCollide then
-            part.CustomPhysicalProperties = PhysicalProperties.new(0.001, 0, 0, 0, 0) -- 极小密度和摩擦力
+            part.CustomPhysicalProperties = PhysicalProperties.new(0.001, 0, 0, 0, 0)
         end
     end
     
-    -- 持续施加惯性效果
     raceConnection = RunService.Heartbeat:Connect(function()
         if not rp or not rp.Parent or not h or h.Health <= 0 then 
             disableRace()
             return 
         end
         
-        -- 如果角色在移动，保持速度不减（大惯性模拟）
         local vel = rp.Velocity
         local horizontalVel = Vector3.new(vel.X, 0, vel.Z)
         
-        -- 只在地面上施加惯性保持
         local rayParams = RaycastParams.new()
         rayParams.FilterDescendantsInstances = {char}
         rayParams.FilterType = Enum.RaycastFilterType.Blacklist
         local ray = workspace:Raycast(rp.Position, Vector3.new(0, -5, 0), rayParams)
         
         if ray then
-            -- 在地面上，保持速度不减（极大惯性）
             if horizontalVel.Magnitude > 1 then
-                -- 持续推动保持速度，模拟无穷大惯性
                 rp.Velocity = horizontalVel + Vector3.new(0, math.min(vel.Y, 0), 0)
             elseif horizontalVel.Magnitude > 0.1 and horizontalVel.Magnitude <= 1 then
-                -- 微小速度也保持住
                 rp.Velocity = horizontalVel.Unit * 2 + Vector3.new(0, math.min(vel.Y, 0), 0)
             end
         end
-        
-        -- 冲刺冷却
-        if raceBoostCooldown then
-            -- 冷却中
-        end
     end)
     
-    -- 创建冲刺按钮（右下角，替换跳跃键位置）
     raceBoostBtn = Instance.new("TextButton", gui)
     raceBoostBtn.Size = UDim2.new(0, 80, 0, 80)
     raceBoostBtn.Position = UDim2.new(1, -100, 1, -180)
@@ -565,26 +838,21 @@ local function enableRace()
     boostStroke.Color = Color3.fromRGB(255, 200, 0)
     boostStroke.Thickness = 4
     
-    -- 冲刺按钮点击
     raceBoostBtn.MouseButton1Down:Connect(function()
         if raceBoostCooldown or not rp or not rp.Parent then return end
         raceBoostActive = true
         raceBoostCooldown = true
         
-        -- 5倍速度冲刺
         if h then h.WalkSpeed = 250 end
         
-        -- 向前喷气推力
         local lookVector = rp.CFrame.LookVector
         local boostDirection = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
         
-        -- 添加巨大推力
         local bv = Instance.new("BodyVelocity", rp)
         bv.MaxForce = Vector3.new(500000, 0, 500000)
         bv.Velocity = boostDirection * 200
         bv.Name = "RaceBoostVelocity"
         
-        -- 喷气粒子效果
         local exhaust = Instance.new("ParticleEmitter", rp)
         exhaust.Texture = "rbxasset://textures/particles/smoke_main.dds"
         exhaust.Rate = 200
@@ -599,11 +867,9 @@ local function enableRace()
         })
         exhaust.Name = "RaceExhaust"
         
-        -- 冲刺视觉反馈
         raceBoostBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
         raceBoostBtn.BackgroundTransparency = 0
         
-        -- 1.5秒后恢复
         task.delay(1.5, function()
             raceBoostActive = false
             if bv and bv.Parent then bv:Destroy() end
@@ -614,7 +880,6 @@ local function enableRace()
                 raceBoostBtn.BackgroundTransparency = 0.2
             end
             
-            -- 3秒冷却
             if raceBoostBtn and raceBoostBtn.Parent then
                 raceBoostBtn.Text = "⚡\n冷却中"
                 raceBoostBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
@@ -646,7 +911,6 @@ local function disableRace()
         raceBoostBtn = nil
     end
     
-    -- 恢复角色
     if player.Character then
         restorePose(player.Character)
         local h = player.Character:FindFirstChild("Humanoid")
@@ -657,7 +921,6 @@ local function disableRace()
             h.JumpPower = originalJumpPower or 50
         end
         
-        -- 恢复物理属性
         for _, part in ipairs(player.Character:GetDescendants()) do
             if part:IsA("BasePart") and part.CanCollide then
                 part.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5, 0, 0)
@@ -665,7 +928,6 @@ local function disableRace()
         end
         
         if rp then
-            -- 清理物理对象
             for _, child in ipairs(rp:GetChildren()) do
                 if child:IsA("BodyVelocity") or child:IsA("ParticleEmitter") then
                     child:Destroy()
@@ -675,6 +937,35 @@ local function disableRace()
     end
     
     raceEnabled = false
+end
+
+-- 一键传送功能
+local function enableTeleport()
+    teleportEnabled = true
+    if teleportWindow then
+        teleportWindow.Visible = true
+        selectedTeleportPlayer = nil
+        originalPosition = nil
+        
+        -- 刷新列表
+        if refreshTeleportList then refreshTeleportList() end
+        
+        -- 重置选中标签
+        local selectedLabel = teleportWindow:FindFirstChild("SelectedLabel")
+        if selectedLabel and selectedLabel:IsA("TextLabel") then
+            selectedLabel.Text = "未选择目标"
+            selectedLabel.BackgroundColor3 = Color3.fromRGB(0, 150, 100)
+        end
+    end
+end
+
+local function disableTeleport()
+    teleportEnabled = false
+    if teleportWindow then
+        teleportWindow.Visible = false
+    end
+    selectedTeleportPlayer = nil
+    originalPosition = nil
 end
 
 local function toggleSpeed()
@@ -1081,6 +1372,10 @@ raceToggle.MouseButton1Down:Connect(function()
     if raceEnabled then disableRace() else enableRace() end
     updateToggle(raceToggle, raceEnabled)
 end)
+teleportToggle.MouseButton1Down:Connect(function()
+    if teleportEnabled then disableTeleport() else enableTeleport() end
+    updateToggle(teleportToggle, teleportEnabled)
+end)
 espToggle.MouseButton1Down:Connect(function()
     if espEnabled then disableESP() else enableESP() end
     updateToggle(espToggle, espEnabled)
@@ -1216,10 +1511,10 @@ Players.PlayerRemoving:Connect(function(plr)
 end)
 
 -- 初始化
-for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, raceToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle}) do
+for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, raceToggle, teleportToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle}) do
     updateToggle(t, false)
 end
 setSpeed(50); setFlySpeed(50); setFlyPanelSize(100); setSpinSpeed(50); setDodgeRadius(15)
 setOrbitRadius(20); setOrbitDistance(5); setOrbitSpeed(10); setAimbotRadius(200); setAimTriggerSize(200)
 
-print("OK - 一键赛车已加载（轮盘控制+冲刺+巨大惯性）")
+print("OK - 一键传送功能已加载")
