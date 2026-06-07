@@ -16,6 +16,7 @@ local dodgeEnabled, dodgeConnection, dodgeRadius = false, nil, 15
 local orbitEnabled, orbitConnection, orbitRadius, orbitSpeed, orbitDistance, orbitTarget = false, nil, 20, 10, 5, nil
 local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStrength = false, false, UDim2.new(0.5, -100, 0.5, -100), 200, 1
 local teleportEnabled, teleportWindow = false, nil
+local followEnabled, followConnection, followTarget = false, nil, nil
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -428,9 +429,20 @@ local function setOrbitSpeed(v)
     updateSlider(orbitSpeedFill, orbitSpeedBtn, orbitSpeed, 1, 100)
 end
 
+-- 停止跟随功能
+local function stopFollow()
+    if followConnection then
+        followConnection:Disconnect()
+        followConnection = nil
+    end
+    followEnabled = false
+    followTarget = nil
+end
+
 -- 传送玩家功能
 local function createTeleportWindow()
     if teleportWindow then teleportWindow:Destroy() end
+    stopFollow() -- 关闭窗口时停止跟随
     
     teleportWindow = Instance.new("Frame", gui)
     teleportWindow.Size = UDim2.new(0, 260, 0, 300)
@@ -459,6 +471,18 @@ local function createTeleportWindow()
     titleText.TextXAlignment = Enum.TextXAlignment.Left
     titleText.ZIndex = 10003
     
+    -- 提示标签
+    local hintLabel = Instance.new("TextLabel", teleportWindow)
+    hintLabel.Size = UDim2.new(1, -10, 0, 16)
+    hintLabel.Position = UDim2.new(0, 5, 1, -20)
+    hintLabel.BackgroundTransparency = 1
+    hintLabel.Text = "点击=传送 | 长按=跟随"
+    hintLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    hintLabel.TextSize = 11
+    hintLabel.Font = Enum.Font.Gotham
+    hintLabel.TextXAlignment = Enum.TextXAlignment.Center
+    hintLabel.ZIndex = 10003
+    
     -- 关闭按钮
     local closeBtn = Instance.new("TextButton", titleBar)
     closeBtn.Size = UDim2.new(0, 24, 0, 24)
@@ -473,7 +497,7 @@ local function createTeleportWindow()
     
     -- 玩家列表滚动框架
     local playerScrollingFrame = Instance.new("ScrollingFrame", teleportWindow)
-    playerScrollingFrame.Size = UDim2.new(1, -10, 1, -40)
+    playerScrollingFrame.Size = UDim2.new(1, -10, 1, -70)
     playerScrollingFrame.Position = UDim2.new(0, 5, 0, 35)
     playerScrollingFrame.BackgroundTransparency = 1
     playerScrollingFrame.ScrollBarThickness = 4
@@ -494,7 +518,7 @@ local function createTeleportWindow()
     -- 刷新按钮
     local refreshBtn = Instance.new("TextButton", teleportWindow)
     refreshBtn.Size = UDim2.new(0, 60, 0, 24)
-    refreshBtn.Position = UDim2.new(0, 10, 1, -28)
+    refreshBtn.Position = UDim2.new(0, 10, 1, -44)
     refreshBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
     refreshBtn.BackgroundTransparency = 0.2
     refreshBtn.Text = "刷新"
@@ -502,6 +526,66 @@ local function createTeleportWindow()
     refreshBtn.TextSize = 12
     refreshBtn.Font = Enum.Font.GothamBold
     refreshBtn.ZIndex = 10003
+    
+    -- 传送函数（无视距离）
+    local function teleportToPlayer(targetPlayer)
+        local localChar = player.Character
+        if not localChar then return end
+        local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+        if not localRoot then return end
+        
+        local targetChar = targetPlayer.Character
+        if not targetChar then return end
+        local targetHead = targetChar:FindFirstChild("Head")
+        if not targetHead then return end
+        
+        -- 使用CFrame直接设置位置，无视距离
+        local teleportPos = targetHead.Position + Vector3.new(0, 3, 0)
+        localRoot.CFrame = CFrame.new(teleportPos)
+    end
+    
+    -- 开始跟随功能
+    local function startFollow(targetPlayer)
+        stopFollow() -- 先停止之前的跟随
+        
+        followTarget = targetPlayer
+        followEnabled = true
+        
+        followConnection = RunService.Heartbeat:Connect(function()
+            if not followEnabled or not followTarget then
+                stopFollow()
+                return
+            end
+            
+            local localChar = player.Character
+            if not localChar then
+                stopFollow()
+                return
+            end
+            
+            local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+            if not localRoot then
+                stopFollow()
+                return
+            end
+            
+            local targetChar = followTarget.Character
+            if not targetChar then
+                stopFollow()
+                return
+            end
+            
+            local targetHead = targetChar:FindFirstChild("Head")
+            if not targetHead then
+                stopFollow()
+                return
+            end
+            
+            -- 持续跟随到目标头顶
+            local teleportPos = targetHead.Position + Vector3.new(0, 3, 0)
+            localRoot.CFrame = CFrame.new(teleportPos)
+        end)
+    end
     
     -- 更新玩家列表函数
     local function updatePlayerList()
@@ -534,6 +618,13 @@ local function createTeleportWindow()
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
                 nameLabel.ZIndex = 10003
                 
+                -- 如果正在跟随该玩家，改变背景色提示
+                if followEnabled and followTarget == targetPlayer then
+                    playerEntry.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+                    playerEntry.BackgroundTransparency = 0.4
+                    nameLabel.Text = targetPlayer.Name .. " [跟随中]"
+                end
+                
                 local teleportBtn = Instance.new("TextButton", playerEntry)
                 teleportBtn.Size = UDim2.new(0, 56, 0, 28)
                 teleportBtn.Position = UDim2.new(1, -62, 0, 4)
@@ -545,22 +636,66 @@ local function createTeleportWindow()
                 teleportBtn.Font = Enum.Font.GothamBold
                 teleportBtn.ZIndex = 10003
                 
-                -- 传送按钮点击事件
-                teleportBtn.MouseButton1Click:Connect(function()
-                    local localChar = player.Character
-                    if not localChar then return end
-                    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
-                    if not localRoot then return end
+                -- 长按检测
+                local pressStartTime = 0
+                local isLongPress = false
+                local longPressConnection
+                local pressConnection
+                
+                -- 按下时记录时间
+                teleportBtn.MouseButton1Down:Connect(function()
+                    pressStartTime = tick()
+                    isLongPress = false
                     
-                    local targetChar = targetPlayer.Character
-                    if targetChar then
-                        local targetHead = targetChar:FindFirstChild("Head")
-                        if targetHead then
-                            -- 传送到目标头上方
-                            local teleportPos = targetHead.Position + Vector3.new(0, 3, 0)
-                            localRoot.CFrame = CFrame.new(teleportPos)
+                    -- 0.3秒后检测是否为长按
+                    longPressConnection = RunService.Heartbeat:Connect(function()
+                        if tick() - pressStartTime >= 0.3 and not isLongPress then
+                            isLongPress = true
+                            -- 开始跟随
+                            startFollow(targetPlayer)
+                            
+                            -- 更新按钮外观
+                            teleportBtn.Text = "跟随中"
+                            teleportBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
+                            
+                            -- 更新列表显示
+                            updatePlayerList()
+                        end
+                    end)
+                end)
+                
+                -- 松开时判断
+                teleportBtn.MouseButton1Up:Connect(function()
+                    if longPressConnection then
+                        longPressConnection:Disconnect()
+                        longPressConnection = nil
+                    end
+                    
+                    if not isLongPress then
+                        -- 短按：停止跟随并传送到目标位置
+                        if followEnabled and followTarget == targetPlayer then
+                            stopFollow()
+                            teleportBtn.Text = "传送"
+                            teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+                            updatePlayerList()
+                        else
+                            -- 单次传送
+                            teleportToPlayer(targetPlayer)
                         end
                     end
+                    
+                    pressStartTime = 0
+                    isLongPress = false
+                end)
+                
+                -- 鼠标离开按钮时取消长按检测
+                teleportBtn.MouseLeave:Connect(function()
+                    if longPressConnection then
+                        longPressConnection:Disconnect()
+                        longPressConnection = nil
+                    end
+                    pressStartTime = 0
+                    isLongPress = false
                 end)
             end
         end
@@ -574,6 +709,7 @@ local function createTeleportWindow()
     
     -- 关闭按钮点击
     closeBtn.MouseButton1Click:Connect(function()
+        stopFollow()
         teleportWindow:Destroy()
         teleportWindow = nil
         teleportEnabled = false
@@ -612,11 +748,15 @@ local function createTeleportWindow()
     end)
     
     local playerRemovingConnection = Players.PlayerRemoving:Connect(function(leavingPlayer)
+        if followEnabled and followTarget == leavingPlayer then
+            stopFollow()
+        end
         updatePlayerList()
     end)
     
-    -- 窗口销毁时断开连接
+    -- 窗口销毁时断开连接并停止跟随
     teleportWindow.Destroying:Connect(function()
+        stopFollow()
         playerAddedConnection:Disconnect()
         playerRemovingConnection:Disconnect()
     end)
@@ -628,6 +768,7 @@ local function enableTeleport()
 end
 
 local function disableTeleport()
+    stopFollow()
     if teleportWindow then
         teleportWindow:Destroy()
         teleportWindow = nil
@@ -1186,10 +1327,27 @@ player.CharacterAdded:Connect(function(char)
     if playerCollisionEnabled then if collisionConnection then collisionConnection:Disconnect() end enablePlayerCollision() end
     if dodgeEnabled then if dodgeConnection then dodgeConnection:Disconnect() end enableDodge() end
     if orbitEnabled then if orbitConnection then orbitConnection:Disconnect() end enableOrbit() end
+    -- 如果死亡重生时正在跟随，重新开始跟随
+    if followEnabled and followTarget then
+        stopFollow()
+        startFollow(followTarget)
+    end
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
     if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
+    if followEnabled and followTarget == plr then
+        stopFollow()
+        if teleportWindow then
+            -- 更新窗口列表
+            for _, child in ipairs(teleportWindow:GetDescendants()) do
+                if child:IsA("ScrollingFrame") then
+                    -- 触发列表更新
+                    local refreshBtn = teleportWindow:FindFirstChildWhichIsA("TextButton")
+                end
+            end
+        end
+    end
 end)
 
 -- 初始化
