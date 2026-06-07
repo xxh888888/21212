@@ -17,6 +17,10 @@ local orbitEnabled, orbitConnection, orbitRadius, orbitSpeed, orbitDistance, orb
 local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStrength = false, false, UDim2.new(0.5, -100, 0.5, -100), 200, 1
 local teleportEnabled, teleportWindow = false, nil
 local followEnabled, followConnection, followTarget = false, nil, nil
+-- 空中惯性控制变量
+local airInertiaEnabled, airInertiaConnection, airInertiaStrength = false, nil, 100
+local lastAirVelocity = Vector3.zero
+local wasInAir = false
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -41,7 +45,7 @@ ball.ZIndex = 10000
 
 local menu = Instance.new("Frame")
 menu.Parent = gui
-menu.Size = UDim2.new(0, 360, 0, 380)
+menu.Size = UDim2.new(0, 360, 0, 420) -- 增加高度以容纳新卡片
 menu.Position = ball.Position + UDim2.new(0, 60, 0, 0)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.BackgroundTransparency = 0.1
@@ -151,7 +155,7 @@ aimbotCircleStroke.Color = Color3.fromRGB(255, 0, 0)
 aimbotCircleStroke.Transparency = 0.3
 aimbotCircleStroke.Thickness = 2
 
--- 自瞄触发按钮（Active = false 穿透点击）
+-- 自瞄触发按钮
 local aimTriggerBtn = Instance.new("TextButton", gui)
 aimTriggerBtn.Size = UDim2.new(0, aimTriggerSize, 0, aimTriggerSize)
 aimTriggerBtn.Position = aimTriggerPos
@@ -336,6 +340,21 @@ orbitSpeedSlider.Position = UDim2.new(0, 10, 0, 164)
 local teleportCard = createCard(scrollingFrame, 10, 42)
 local teleportHeader, teleportToggle = createHeader(teleportCard, "传送玩家")
 
+-- 空中惯性控制卡片
+local airInertiaCard = createCard(scrollingFrame, 11, 100)
+local airInertiaHeader, airInertiaToggle = createHeader(airInertiaCard, "空中惯性")
+local airInertiaDisplay = Instance.new("TextLabel", airInertiaCard)
+airInertiaDisplay.Size = UDim2.new(1, -20, 0, 18)
+airInertiaDisplay.Position = UDim2.new(0, 10, 0, 34)
+airInertiaDisplay.BackgroundTransparency = 1
+airInertiaDisplay.Text = "惯性强度: 100"
+airInertiaDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
+airInertiaDisplay.TextSize = 13
+airInertiaDisplay.Font = Enum.Font.Gotham
+airInertiaDisplay.TextXAlignment = Enum.TextXAlignment.Left
+local airInertiaSlider, airInertiaFill, airInertiaBtn, airInertiaValue = createSlider(airInertiaCard, 1, 100000, 100)
+airInertiaSlider.Position = UDim2.new(0, 10, 0, 56)
+
 -- 更新函数
 local function updateToggle(btn, state)
     btn.Text = state and "ON" or "OFF"
@@ -429,6 +448,13 @@ local function setOrbitSpeed(v)
     updateSlider(orbitSpeedFill, orbitSpeedBtn, orbitSpeed, 1, 100)
 end
 
+local function setAirInertiaStrength(v)
+    airInertiaStrength = math.clamp(v, 1, 100000)
+    airInertiaDisplay.Text = "惯性强度: " .. airInertiaStrength
+    airInertiaValue.Text = tostring(airInertiaStrength)
+    updateSlider(airInertiaFill, airInertiaBtn, airInertiaStrength, 1, 100000)
+end
+
 -- 停止跟随功能
 local function stopFollow()
     if followConnection then
@@ -442,7 +468,7 @@ end
 -- 传送玩家功能
 local function createTeleportWindow()
     if teleportWindow then teleportWindow:Destroy() end
-    stopFollow() -- 关闭窗口时停止跟随
+    stopFollow()
     
     teleportWindow = Instance.new("Frame", gui)
     teleportWindow.Size = UDim2.new(0, 260, 0, 300)
@@ -452,7 +478,6 @@ local function createTeleportWindow()
     teleportWindow.BorderSizePixel = 0
     teleportWindow.ZIndex = 10002
     
-    -- 标题栏
     local titleBar = Instance.new("Frame", teleportWindow)
     titleBar.Size = UDim2.new(1, 0, 0, 30)
     titleBar.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
@@ -471,7 +496,6 @@ local function createTeleportWindow()
     titleText.TextXAlignment = Enum.TextXAlignment.Left
     titleText.ZIndex = 10003
     
-    -- 提示标签
     local hintLabel = Instance.new("TextLabel", teleportWindow)
     hintLabel.Size = UDim2.new(1, -10, 0, 16)
     hintLabel.Position = UDim2.new(0, 5, 1, -20)
@@ -483,7 +507,6 @@ local function createTeleportWindow()
     hintLabel.TextXAlignment = Enum.TextXAlignment.Center
     hintLabel.ZIndex = 10003
     
-    -- 关闭按钮
     local closeBtn = Instance.new("TextButton", titleBar)
     closeBtn.Size = UDim2.new(0, 24, 0, 24)
     closeBtn.Position = UDim2.new(1, -28, 0, 3)
@@ -495,7 +518,6 @@ local function createTeleportWindow()
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.ZIndex = 10003
     
-    -- 玩家列表滚动框架
     local playerScrollingFrame = Instance.new("ScrollingFrame", teleportWindow)
     playerScrollingFrame.Size = UDim2.new(1, -10, 1, -70)
     playerScrollingFrame.Position = UDim2.new(0, 5, 0, 35)
@@ -515,7 +537,6 @@ local function createTeleportWindow()
     playerListLayout.Padding = UDim.new(0, 4)
     playerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     
-    -- 刷新按钮
     local refreshBtn = Instance.new("TextButton", teleportWindow)
     refreshBtn.Size = UDim2.new(0, 60, 0, 24)
     refreshBtn.Position = UDim2.new(0, 10, 1, -44)
@@ -527,7 +548,6 @@ local function createTeleportWindow()
     refreshBtn.Font = Enum.Font.GothamBold
     refreshBtn.ZIndex = 10003
     
-    -- 传送函数（无视距离）
     local function teleportToPlayer(targetPlayer)
         local localChar = player.Character
         if not localChar then return end
@@ -539,14 +559,12 @@ local function createTeleportWindow()
         local targetHead = targetChar:FindFirstChild("Head")
         if not targetHead then return end
         
-        -- 使用CFrame直接设置位置，无视距离
         local teleportPos = targetHead.Position + Vector3.new(0, 3, 0)
         localRoot.CFrame = CFrame.new(teleportPos)
     end
     
-    -- 开始跟随功能
     local function startFollow(targetPlayer)
-        stopFollow() -- 先停止之前的跟随
+        stopFollow()
         
         followTarget = targetPlayer
         followEnabled = true
@@ -581,15 +599,12 @@ local function createTeleportWindow()
                 return
             end
             
-            -- 持续跟随到目标头顶
             local teleportPos = targetHead.Position + Vector3.new(0, 3, 0)
             localRoot.CFrame = CFrame.new(teleportPos)
         end)
     end
     
-    -- 更新玩家列表函数
     local function updatePlayerList()
-        -- 清除现有列表
         for _, child in ipairs(playerScrollingFrame:GetChildren()) do
             if child:IsA("Frame") then child:Destroy() end
         end
@@ -618,7 +633,6 @@ local function createTeleportWindow()
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
                 nameLabel.ZIndex = 10003
                 
-                -- 如果正在跟随该玩家，改变背景色提示
                 if followEnabled and followTarget == targetPlayer then
                     playerEntry.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                     playerEntry.BackgroundTransparency = 0.4
@@ -636,35 +650,26 @@ local function createTeleportWindow()
                 teleportBtn.Font = Enum.Font.GothamBold
                 teleportBtn.ZIndex = 10003
                 
-                -- 长按检测
                 local pressStartTime = 0
                 local isLongPress = false
                 local longPressConnection
                 local pressConnection
                 
-                -- 按下时记录时间
                 teleportBtn.MouseButton1Down:Connect(function()
                     pressStartTime = tick()
                     isLongPress = false
                     
-                    -- 0.3秒后检测是否为长按
                     longPressConnection = RunService.Heartbeat:Connect(function()
                         if tick() - pressStartTime >= 0.3 and not isLongPress then
                             isLongPress = true
-                            -- 开始跟随
                             startFollow(targetPlayer)
-                            
-                            -- 更新按钮外观
                             teleportBtn.Text = "跟随中"
                             teleportBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
-                            
-                            -- 更新列表显示
                             updatePlayerList()
                         end
                     end)
                 end)
                 
-                -- 松开时判断
                 teleportBtn.MouseButton1Up:Connect(function()
                     if longPressConnection then
                         longPressConnection:Disconnect()
@@ -672,14 +677,12 @@ local function createTeleportWindow()
                     end
                     
                     if not isLongPress then
-                        -- 短按：停止跟随并传送到目标位置
                         if followEnabled and followTarget == targetPlayer then
                             stopFollow()
                             teleportBtn.Text = "传送"
                             teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
                             updatePlayerList()
                         else
-                            -- 单次传送
                             teleportToPlayer(targetPlayer)
                         end
                     end
@@ -688,7 +691,6 @@ local function createTeleportWindow()
                     isLongPress = false
                 end)
                 
-                -- 鼠标离开按钮时取消长按检测
                 teleportBtn.MouseLeave:Connect(function()
                     if longPressConnection then
                         longPressConnection:Disconnect()
@@ -701,13 +703,10 @@ local function createTeleportWindow()
         end
     end
     
-    -- 初始加载玩家列表
     updatePlayerList()
     
-    -- 刷新按钮点击
     refreshBtn.MouseButton1Click:Connect(updatePlayerList)
     
-    -- 关闭按钮点击
     closeBtn.MouseButton1Click:Connect(function()
         stopFollow()
         teleportWindow:Destroy()
@@ -716,7 +715,6 @@ local function createTeleportWindow()
         updateToggle(teleportToggle, false)
     end)
     
-    -- 窗口拖动
     local dragging, dragStart, startPos = false, nil, nil
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -742,7 +740,6 @@ local function createTeleportWindow()
         end
     end)
     
-    -- 监听玩家加入/离开自动更新列表
     local playerAddedConnection = Players.PlayerAdded:Connect(function(newPlayer)
         updatePlayerList()
     end)
@@ -754,7 +751,6 @@ local function createTeleportWindow()
         updatePlayerList()
     end)
     
-    -- 窗口销毁时断开连接并停止跟随
     teleportWindow.Destroying:Connect(function()
         stopFollow()
         playerAddedConnection:Disconnect()
@@ -1153,6 +1149,94 @@ local function disableOrbit()
     orbitTarget = nil; orbitEnabled = false
 end
 
+-- 空中惯性控制功能
+local function enableAirInertia()
+    airInertiaEnabled = true
+    wasInAir = false
+    lastAirVelocity = Vector3.zero
+    
+    airInertiaConnection = RunService.Heartbeat:Connect(function()
+        local char = player.Character
+        if not char then return end
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        local humanoid = char:FindFirstChild("Humanoid")
+        if not rootPart or not humanoid then return end
+        
+        -- 检测是否在空中（通过检测Humanoid的状态和地面距离）
+        local isInAir = humanoid.FloorMaterial == Enum.Material.Air and 
+                       humanoid:GetState() ~= Enum.HumanoidStateType.Landed and
+                       humanoid:GetState() ~= Enum.HumanoidStateType.Running and
+                       humanoid:GetState() ~= Enum.HumanoidStateType.RunningNoPhysics
+        
+        if isInAir and not flyEnabled then -- 如果飞行模式开启，不应用惯性控制
+            if not wasInAir then
+                -- 刚进入空中，记录当前速度
+                lastAirVelocity = rootPart.Velocity
+                -- 移除Y轴速度影响，保留水平惯性
+                lastAirVelocity = Vector3.new(lastAirVelocity.X, 0, lastAirVelocity.Z)
+            else
+                -- 持续在空中时应用惯性力
+                if lastAirVelocity.Magnitude > 0.1 then
+                    -- 计算惯性力（可调节的强度）
+                    local inertiaForce = lastAirVelocity.Unit * airInertiaStrength
+                    -- 应用力到RootPart
+                    local bodyVelocity = rootPart:FindFirstChild("AirInertiaVelocity")
+                    if not bodyVelocity then
+                        bodyVelocity = Instance.new("BodyVelocity")
+                        bodyVelocity.Name = "AirInertiaVelocity"
+                        bodyVelocity.MaxForce = Vector3.new(math.huge, 0, math.huge) -- 只在水平方向应用力
+                        bodyVelocity.Velocity = Vector3.zero
+                        bodyVelocity.Parent = rootPart
+                    end
+                    -- 设置速度（保留原有的垂直速度）
+                    local currentYVelocity = rootPart.Velocity.Y
+                    bodyVelocity.Velocity = Vector3.new(
+                        lastAirVelocity.X * (airInertiaStrength / 100),
+                        0,
+                        lastAirVelocity.Z * (airInertiaStrength / 100)
+                    )
+                end
+            end
+        else
+            -- 在地面时更新速度记录
+            if wasInAir then
+                -- 刚落地，清理BodyVelocity
+                local bodyVelocity = rootPart:FindFirstChild("AirInertiaVelocity")
+                if bodyVelocity then bodyVelocity:Destroy() end
+            end
+            lastAirVelocity = rootPart.Velocity
+            lastAirVelocity = Vector3.new(lastAirVelocity.X, 0, lastAirVelocity.Z)
+            
+            -- 在地面时也更新速度，以便下次跳跃时使用
+            if humanoid.MoveDirection.Magnitude > 0 then
+                lastAirVelocity = humanoid.MoveDirection * humanoid.WalkSpeed
+            end
+        end
+        
+        wasInAir = isInAir
+    end)
+end
+
+local function disableAirInertia()
+    if airInertiaConnection then 
+        airInertiaConnection:Disconnect()
+        airInertiaConnection = nil 
+    end
+    
+    -- 清理所有角色的BodyVelocity
+    if player.Character then
+        local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            local bodyVelocity = rootPart:FindFirstChild("AirInertiaVelocity")
+            if bodyVelocity then bodyVelocity:Destroy() end
+        end
+    end
+    
+    airInertiaEnabled = false
+    wasInAir = false
+    lastAirVelocity = Vector3.zero
+end
+
 -- 滑块事件
 local function setupSlider(sBtn, sBg, setFunc, min, max)
     local dragging = false
@@ -1181,6 +1265,7 @@ setupSlider(dodgeBtn, dodgeSlider, setDodgeRadius, 5, 50)
 setupSlider(orbitRadiusBtn, orbitRadiusSlider, setOrbitRadius, 5, 50)
 setupSlider(orbitDistanceBtn, orbitDistanceSlider, setOrbitDistance, 2, 20)
 setupSlider(orbitSpeedBtn, orbitSpeedSlider, setOrbitSpeed, 1, 100)
+setupSlider(airInertiaBtn, airInertiaSlider, setAirInertiaStrength, 1, 100000)
 
 -- 开关绑定
 speedToggle.MouseButton1Down:Connect(toggleSpeed)
@@ -1220,6 +1305,10 @@ teleportToggle.MouseButton1Down:Connect(function()
     if teleportEnabled then disableTeleport() else enableTeleport() end
     updateToggle(teleportToggle, teleportEnabled)
 end)
+airInertiaToggle.MouseButton1Down:Connect(function()
+    if airInertiaEnabled then disableAirInertia() else enableAirInertia() end
+    updateToggle(airInertiaToggle, airInertiaEnabled)
+end)
 
 -- 显示触发按钮
 aimTriggerToggle.MouseButton1Down:Connect(function()
@@ -1244,10 +1333,9 @@ aimTriggerMoveBtn.MouseButton1Down:Connect(function()
         aimTriggerBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
         aimTriggerBtn.BackgroundTransparency = 0.8
         aimTriggerLabel.Text = "按住自瞄"
-    end
-end)
+    endend)
 
--- 自瞄触发按钮：按下激活，松开停用（Active = false 确保穿透点击）
+-- 自瞄触发按钮
 aimTriggerBtn.MouseButton1Down:Connect(function()
     if not aimTriggerMoving then aimbotActive = true end
 end)
@@ -1327,7 +1415,10 @@ player.CharacterAdded:Connect(function(char)
     if playerCollisionEnabled then if collisionConnection then collisionConnection:Disconnect() end enablePlayerCollision() end
     if dodgeEnabled then if dodgeConnection then dodgeConnection:Disconnect() end enableDodge() end
     if orbitEnabled then if orbitConnection then orbitConnection:Disconnect() end enableOrbit() end
-    -- 如果死亡重生时正在跟随，重新开始跟随
+    if airInertiaEnabled then 
+        if airInertiaConnection then airInertiaConnection:Disconnect() end 
+        enableAirInertia() 
+    end
     if followEnabled and followTarget then
         stopFollow()
         startFollow(followTarget)
@@ -1338,23 +1429,15 @@ Players.PlayerRemoving:Connect(function(plr)
     if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
     if followEnabled and followTarget == plr then
         stopFollow()
-        if teleportWindow then
-            -- 更新窗口列表
-            for _, child in ipairs(teleportWindow:GetDescendants()) do
-                if child:IsA("ScrollingFrame") then
-                    -- 触发列表更新
-                    local refreshBtn = teleportWindow:FindFirstChildWhichIsA("TextButton")
-                end
-            end
-        end
     end
 end)
 
 -- 初始化
-for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle, teleportToggle}) do
+for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle, teleportToggle, airInertiaToggle}) do
     updateToggle(t, false)
 end
 setSpeed(50); setFlySpeed(50); setFlyPanelSize(100); setSpinSpeed(50); setDodgeRadius(15)
 setOrbitRadius(20); setOrbitDistance(5); setOrbitSpeed(10); setAimbotRadius(200); setAimTriggerSize(200)
+setAirInertiaStrength(100)
 
 print("OK")
