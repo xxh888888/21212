@@ -28,6 +28,31 @@ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 999999
 
+-- 先创建菜单框架
+local menu = Instance.new("Frame")
+menu.Parent = gui
+menu.Size = UDim2.new(0, 360, 0, 380)
+menu.Position = UDim2.new(1, -430, 1, -450)
+menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+menu.BackgroundTransparency = 0.1
+menu.BorderSizePixel = 0
+menu.Visible = false
+menu.ClipsDescendants = true
+menu.ZIndex = 9999
+
+-- 关闭按钮（在菜单创建之后创建）
+local closeBall = Instance.new("TextButton")
+closeBall.Size = UDim2.new(0, 30, 0, 30)
+closeBall.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+closeBall.BackgroundTransparency = 0.2
+closeBall.Text = "✕"
+closeBall.TextColor3 = Color3.new(1, 1, 1)
+closeBall.TextSize = 16
+closeBall.Font = Enum.Font.GothamBold
+closeBall.ZIndex = 10000
+closeBall.Visible = false
+closeBall.Parent = gui
+
 -- 确认对话框
 local confirmDialog = Instance.new("Frame", gui)
 confirmDialog.Size = UDim2.new(0, 240, 0, 120)
@@ -80,19 +105,7 @@ confirmNoBtn.TextSize = 14
 confirmNoBtn.Font = Enum.Font.GothamBold
 confirmNoBtn.ZIndex = 100001
 
--- 关闭按钮（菜单右上角）
-local closeBall = Instance.new("TextButton", gui)
-closeBall.Size = UDim2.new(0, 30, 0, 30)
-closeBall.Position = UDim2.new(1, -40, 0, 10)
-closeBall.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-closeBall.BackgroundTransparency = 0.2
-closeBall.Text = "✕"
-closeBall.TextColor3 = Color3.new(1, 1, 1)
-closeBall.TextSize = 16
-closeBall.Font = Enum.Font.GothamBold
-closeBall.ZIndex = 10000
-closeBall.Visible = false
-
+-- 悬浮球
 local ball = Instance.new("TextButton")
 ball.Parent = gui
 ball.Size = UDim2.new(0, 50, 0, 50)
@@ -105,17 +118,6 @@ ball.TextColor3 = Color3.new(1, 1, 1)
 ball.TextSize = 14
 ball.Font = Enum.Font.GothamBold
 ball.ZIndex = 10000
-
-local menu = Instance.new("Frame")
-menu.Parent = gui
-menu.Size = UDim2.new(0, 360, 0, 380)
-menu.Position = ball.Position + UDim2.new(0, 60, 0, 0)
-menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-menu.BackgroundTransparency = 0.1
-menu.BorderSizePixel = 0
-menu.Visible = false
-menu.ClipsDescendants = true
-menu.ZIndex = 9999
 
 local scrollingFrame = Instance.new("ScrollingFrame")
 scrollingFrame.Parent = menu
@@ -206,6 +208,18 @@ local function createSlider(parent, min, max, default)
     return container, fill, btn, valueLabel
 end
 
+-- 更新函数
+local function updateToggle(btn, state)
+    btn.Text = state and "ON" or "OFF"
+    btn.BackgroundColor3 = state and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
+end
+
+local function updateSlider(fill, btn, value, min, max)
+    local ratio = (value - min) / (max - min)
+    fill.Size = UDim2.new(ratio, 0, 1, 0)
+    btn.Position = UDim2.new(ratio, -8, 0.5, -8)
+end
+
 -- 自瞄红圈
 local aimbotCircle = Instance.new("Frame", gui)
 aimbotCircle.Size = UDim2.new(0, aimbotRadius * 2, 0, aimbotRadius * 2)
@@ -242,10 +256,44 @@ aimTriggerLabel.TextColor3 = Color3.new(1, 1, 1)
 aimTriggerLabel.TextSize = 14
 aimTriggerLabel.Font = Enum.Font.GothamBold
 
--- 卡片创建
-local speedCard = createCard(scrollingFrame, 1, 100)
-local speedHeader, speedToggle = createHeader(speedCard, "加速")
-local speedDisplay = Instance.new("TextLabel", speedCard)
+-- 卡片创建 - 先创建所有卡片的变量
+local speedCard, speedHeader, speedToggle, speedDisplay
+local speedSlider, speedFill, speedBtn, speedValue
+
+local climbCard, climbHeader, climbToggle
+
+local flyCard, flyHeader, flyToggle, flySpeedDisplay
+local flySpeedSlider, flySpeedFill, flySpeedBtn, flySpeedValue
+local flyPanelSizeDisplay, flyPanelSizeSlider, flyPanelSizeFill, flyPanelSizeBtn, flyPanelSizeValue
+
+local spinCard, spinHeader, spinToggle, spinSpeedDisplay
+local spinSlider, spinFill, spinBtn, spinValue
+
+local espCard, espHeader, espToggle
+
+local collisionCard, collisionHeader, collisionToggle
+
+local aimbotCard, aimbotHeader, aimbotToggle
+local aimTriggerToggle, aimTriggerMoveBtn, aimbotRadiusDisplay
+local aimbotSlider, aimbotFill, aimbotBtn, aimRadiusValue
+local aimTriggerSizeDisplay, aimTriggerSizeSlider, aimTriggerSizeFill, aimTriggerSizeBtn
+
+local dodgeCard, dodgeHeader, dodgeToggle, dodgeRadiusDisplay
+local dodgeSlider, dodgeFill, dodgeBtn, dodgeValue
+
+local orbitCard, orbitHeader, orbitToggle
+local orbitRadiusDisplay, orbitRadiusSlider, orbitRadiusFill, orbitRadiusBtn
+local orbitDistanceDisplay, orbitDistanceSlider, orbitDistanceFill, orbitDistanceBtn
+local orbitSpeedDisplay, orbitSpeedSlider, orbitSpeedFill, orbitSpeedBtn
+
+local teleportCard, teleportHeader, teleportToggle
+
+local mimicCard, mimicHeader, mimicToggle
+
+-- 创建速度卡片
+speedCard = createCard(scrollingFrame, 1, 100)
+speedHeader, speedToggle = createHeader(speedCard, "加速")
+speedDisplay = Instance.new("TextLabel", speedCard)
 speedDisplay.Size = UDim2.new(1, -20, 0, 18)
 speedDisplay.Position = UDim2.new(0, 10, 0, 34)
 speedDisplay.BackgroundTransparency = 1
@@ -254,15 +302,17 @@ speedDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 speedDisplay.TextSize = 13
 speedDisplay.Font = Enum.Font.Gotham
 speedDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local speedSlider, speedFill, speedBtn, speedValue = createSlider(speedCard, 16, 1000, 50)
+speedSlider, speedFill, speedBtn, speedValue = createSlider(speedCard, 16, 1000, 50)
 speedSlider.Position = UDim2.new(0, 10, 0, 60)
 
-local climbCard = createCard(scrollingFrame, 2, 42)
-local climbHeader, climbToggle = createHeader(climbCard, "强制攀爬")
+-- 创建攀爬卡片
+climbCard = createCard(scrollingFrame, 2, 42)
+climbHeader, climbToggle = createHeader(climbCard, "强制攀爬")
 
-local flyCard = createCard(scrollingFrame, 3, 130)
-local flyHeader, flyToggle = createHeader(flyCard, "飞行模式")
-local flySpeedDisplay = Instance.new("TextLabel", flyCard)
+-- 创建飞行卡片
+flyCard = createCard(scrollingFrame, 3, 130)
+flyHeader, flyToggle = createHeader(flyCard, "飞行模式")
+flySpeedDisplay = Instance.new("TextLabel", flyCard)
 flySpeedDisplay.Size = UDim2.new(1, -20, 0, 18)
 flySpeedDisplay.Position = UDim2.new(0, 10, 0, 34)
 flySpeedDisplay.BackgroundTransparency = 1
@@ -271,9 +321,9 @@ flySpeedDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 flySpeedDisplay.TextSize = 13
 flySpeedDisplay.Font = Enum.Font.Gotham
 flySpeedDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local flySpeedSlider, flySpeedFill, flySpeedBtn, flySpeedValue = createSlider(flyCard, 10, 500, 50)
+flySpeedSlider, flySpeedFill, flySpeedBtn, flySpeedValue = createSlider(flyCard, 10, 500, 50)
 flySpeedSlider.Position = UDim2.new(0, 10, 0, 56)
-local flyPanelSizeDisplay = Instance.new("TextLabel", flyCard)
+flyPanelSizeDisplay = Instance.new("TextLabel", flyCard)
 flyPanelSizeDisplay.Size = UDim2.new(1, -20, 0, 18)
 flyPanelSizeDisplay.Position = UDim2.new(0, 10, 0, 88)
 flyPanelSizeDisplay.BackgroundTransparency = 1
@@ -282,12 +332,13 @@ flyPanelSizeDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 flyPanelSizeDisplay.TextSize = 13
 flyPanelSizeDisplay.Font = Enum.Font.Gotham
 flyPanelSizeDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local flyPanelSizeSlider, flyPanelSizeFill, flyPanelSizeBtn, flyPanelSizeValue = createSlider(flyCard, 80, 200, 100)
+flyPanelSizeSlider, flyPanelSizeFill, flyPanelSizeBtn, flyPanelSizeValue = createSlider(flyCard, 80, 200, 100)
 flyPanelSizeSlider.Position = UDim2.new(0, 10, 0, 110)
 
-local spinCard = createCard(scrollingFrame, 4, 100)
-local spinHeader, spinToggle = createHeader(spinCard, "陀螺旋转")
-local spinSpeedDisplay = Instance.new("TextLabel", spinCard)
+-- 创建旋转卡片
+spinCard = createCard(scrollingFrame, 4, 100)
+spinHeader, spinToggle = createHeader(spinCard, "陀螺旋转")
+spinSpeedDisplay = Instance.new("TextLabel", spinCard)
 spinSpeedDisplay.Size = UDim2.new(1, -20, 0, 18)
 spinSpeedDisplay.Position = UDim2.new(0, 10, 0, 34)
 spinSpeedDisplay.BackgroundTransparency = 1
@@ -296,18 +347,21 @@ spinSpeedDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 spinSpeedDisplay.TextSize = 13
 spinSpeedDisplay.Font = Enum.Font.Gotham
 spinSpeedDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local spinSlider, spinFill, spinBtn, spinValue = createSlider(spinCard, 1, 1000, 50)
+spinSlider, spinFill, spinBtn, spinValue = createSlider(spinCard, 1, 1000, 50)
 spinSlider.Position = UDim2.new(0, 10, 0, 56)
 
-local espCard = createCard(scrollingFrame, 5, 42)
-local espHeader, espToggle = createHeader(espCard, "人物内透")
+-- 创建ESP卡片
+espCard = createCard(scrollingFrame, 5, 42)
+espHeader, espToggle = createHeader(espCard, "人物内透")
 
-local collisionCard = createCard(scrollingFrame, 6, 42)
-local collisionHeader, collisionToggle = createHeader(collisionCard, "强制碰撞")
+-- 创建碰撞卡片
+collisionCard = createCard(scrollingFrame, 6, 42)
+collisionHeader, collisionToggle = createHeader(collisionCard, "强制碰撞")
 
-local aimbotCard = createCard(scrollingFrame, 7, 195)
-local aimbotHeader, aimbotToggle = createHeader(aimbotCard, "人物自瞄")
-local aimTriggerToggle = Instance.new("TextButton", aimbotCard)
+-- 创建自瞄卡片
+aimbotCard = createCard(scrollingFrame, 7, 195)
+aimbotHeader, aimbotToggle = createHeader(aimbotCard, "人物自瞄")
+aimTriggerToggle = Instance.new("TextButton", aimbotCard)
 aimTriggerToggle.Size = UDim2.new(1, -20, 0, 22)
 aimTriggerToggle.Position = UDim2.new(0, 10, 0, 34)
 aimTriggerToggle.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -317,7 +371,7 @@ aimTriggerToggle.TextColor3 = Color3.new(1, 1, 1)
 aimTriggerToggle.TextSize = 12
 aimTriggerToggle.Font = Enum.Font.GothamBold
 aimTriggerToggle.ZIndex = 10001
-local aimTriggerMoveBtn = Instance.new("TextButton", aimbotCard)
+aimTriggerMoveBtn = Instance.new("TextButton", aimbotCard)
 aimTriggerMoveBtn.Size = UDim2.new(1, -20, 0, 22)
 aimTriggerMoveBtn.Position = UDim2.new(0, 10, 0, 60)
 aimTriggerMoveBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -327,7 +381,7 @@ aimTriggerMoveBtn.TextColor3 = Color3.new(1, 1, 1)
 aimTriggerMoveBtn.TextSize = 12
 aimTriggerMoveBtn.Font = Enum.Font.GothamBold
 aimTriggerMoveBtn.ZIndex = 10001
-local aimbotRadiusDisplay = Instance.new("TextLabel", aimbotCard)
+aimbotRadiusDisplay = Instance.new("TextLabel", aimbotCard)
 aimbotRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
 aimbotRadiusDisplay.Position = UDim2.new(0, 10, 0, 88)
 aimbotRadiusDisplay.BackgroundTransparency = 1
@@ -336,9 +390,9 @@ aimbotRadiusDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 aimbotRadiusDisplay.TextSize = 12
 aimbotRadiusDisplay.Font = Enum.Font.Gotham
 aimbotRadiusDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local aimbotSlider, aimbotFill, aimbotBtn, aimRadiusValue = createSlider(aimbotCard, 50, 500, 200)
+aimbotSlider, aimbotFill, aimbotBtn, aimRadiusValue = createSlider(aimbotCard, 50, 500, 200)
 aimbotSlider.Position = UDim2.new(0, 10, 0, 110)
-local aimTriggerSizeDisplay = Instance.new("TextLabel", aimbotCard)
+aimTriggerSizeDisplay = Instance.new("TextLabel", aimbotCard)
 aimTriggerSizeDisplay.Size = UDim2.new(1, -20, 0, 18)
 aimTriggerSizeDisplay.Position = UDim2.new(0, 10, 0, 142)
 aimTriggerSizeDisplay.BackgroundTransparency = 1
@@ -347,12 +401,13 @@ aimTriggerSizeDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 aimTriggerSizeDisplay.TextSize = 12
 aimTriggerSizeDisplay.Font = Enum.Font.Gotham
 aimTriggerSizeDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local aimTriggerSizeSlider, aimTriggerSizeFill, aimTriggerSizeBtn, _ = createSlider(aimbotCard, 80, 400, 200)
+aimTriggerSizeSlider, aimTriggerSizeFill, aimTriggerSizeBtn, _ = createSlider(aimbotCard, 80, 400, 200)
 aimTriggerSizeSlider.Position = UDim2.new(0, 10, 0, 164)
 
-local dodgeCard = createCard(scrollingFrame, 8, 100)
-local dodgeHeader, dodgeToggle = createHeader(dodgeCard, "人物躲避")
-local dodgeRadiusDisplay = Instance.new("TextLabel", dodgeCard)
+-- 创建躲避卡片
+dodgeCard = createCard(scrollingFrame, 8, 100)
+dodgeHeader, dodgeToggle = createHeader(dodgeCard, "人物躲避")
+dodgeRadiusDisplay = Instance.new("TextLabel", dodgeCard)
 dodgeRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
 dodgeRadiusDisplay.Position = UDim2.new(0, 10, 0, 34)
 dodgeRadiusDisplay.BackgroundTransparency = 1
@@ -361,12 +416,13 @@ dodgeRadiusDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 dodgeRadiusDisplay.TextSize = 13
 dodgeRadiusDisplay.Font = Enum.Font.Gotham
 dodgeRadiusDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local dodgeSlider, dodgeFill, dodgeBtn, dodgeValue = createSlider(dodgeCard, 5, 50, 15)
+dodgeSlider, dodgeFill, dodgeBtn, dodgeValue = createSlider(dodgeCard, 5, 50, 15)
 dodgeSlider.Position = UDim2.new(0, 10, 0, 56)
 
-local orbitCard = createCard(scrollingFrame, 9, 175)
-local orbitHeader, orbitToggle = createHeader(orbitCard, "围绕旋转")
-local orbitRadiusDisplay = Instance.new("TextLabel", orbitCard)
+-- 创建围绕卡片
+orbitCard = createCard(scrollingFrame, 9, 175)
+orbitHeader, orbitToggle = createHeader(orbitCard, "围绕旋转")
+orbitRadiusDisplay = Instance.new("TextLabel", orbitCard)
 orbitRadiusDisplay.Size = UDim2.new(1, -20, 0, 18)
 orbitRadiusDisplay.Position = UDim2.new(0, 10, 0, 34)
 orbitRadiusDisplay.BackgroundTransparency = 1
@@ -375,9 +431,9 @@ orbitRadiusDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 orbitRadiusDisplay.TextSize = 12
 orbitRadiusDisplay.Font = Enum.Font.Gotham
 orbitRadiusDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local orbitRadiusSlider, orbitRadiusFill, orbitRadiusBtn, _ = createSlider(orbitCard, 5, 50, 20)
+orbitRadiusSlider, orbitRadiusFill, orbitRadiusBtn, _ = createSlider(orbitCard, 5, 50, 20)
 orbitRadiusSlider.Position = UDim2.new(0, 10, 0, 56)
-local orbitDistanceDisplay = Instance.new("TextLabel", orbitCard)
+orbitDistanceDisplay = Instance.new("TextLabel", orbitCard)
 orbitDistanceDisplay.Size = UDim2.new(1, -20, 0, 18)
 orbitDistanceDisplay.Position = UDim2.new(0, 10, 0, 88)
 orbitDistanceDisplay.BackgroundTransparency = 1
@@ -386,9 +442,9 @@ orbitDistanceDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 orbitDistanceDisplay.TextSize = 12
 orbitDistanceDisplay.Font = Enum.Font.Gotham
 orbitDistanceDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local orbitDistanceSlider, orbitDistanceFill, orbitDistanceBtn, _ = createSlider(orbitCard, 2, 20, 5)
+orbitDistanceSlider, orbitDistanceFill, orbitDistanceBtn, _ = createSlider(orbitCard, 2, 20, 5)
 orbitDistanceSlider.Position = UDim2.new(0, 10, 0, 110)
-local orbitSpeedDisplay = Instance.new("TextLabel", orbitCard)
+orbitSpeedDisplay = Instance.new("TextLabel", orbitCard)
 orbitSpeedDisplay.Size = UDim2.new(1, -20, 0, 18)
 orbitSpeedDisplay.Position = UDim2.new(0, 10, 0, 142)
 orbitSpeedDisplay.BackgroundTransparency = 1
@@ -397,26 +453,16 @@ orbitSpeedDisplay.TextColor3 = Color3.fromRGB(180, 180, 180)
 orbitSpeedDisplay.TextSize = 12
 orbitSpeedDisplay.Font = Enum.Font.Gotham
 orbitSpeedDisplay.TextXAlignment = Enum.TextXAlignment.Left
-local orbitSpeedSlider, orbitSpeedFill, orbitSpeedBtn, _ = createSlider(orbitCard, 1, 100, 10)
+orbitSpeedSlider, orbitSpeedFill, orbitSpeedBtn, _ = createSlider(orbitCard, 1, 100, 10)
 orbitSpeedSlider.Position = UDim2.new(0, 10, 0, 164)
 
-local teleportCard = createCard(scrollingFrame, 10, 42)
-local teleportHeader, teleportToggle = createHeader(teleportCard, "传送玩家")
+-- 创建传送卡片
+teleportCard = createCard(scrollingFrame, 10, 42)
+teleportHeader, teleportToggle = createHeader(teleportCard, "传送玩家")
 
-local mimicCard = createCard(scrollingFrame, 11, 42)
-local mimicHeader, mimicToggle = createHeader(mimicCard, "模仿动作")
-
--- 更新函数
-local function updateToggle(btn, state)
-    btn.Text = state and "ON" or "OFF"
-    btn.BackgroundColor3 = state and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)
-end
-
-local function updateSlider(fill, btn, value, min, max)
-    local ratio = (value - min) / (max - min)
-    fill.Size = UDim2.new(ratio, 0, 1, 0)
-    btn.Position = UDim2.new(ratio, -8, 0.5, -8)
-end
+-- 创建模仿卡片
+mimicCard = createCard(scrollingFrame, 11, 42)
+mimicHeader, mimicToggle = createHeader(mimicCard, "模仿动作")
 
 local function setSpeed(v)
     currentSpeed = math.clamp(v, 16, 1000)
@@ -514,7 +560,6 @@ local function startMimic(targetPlayer)
     
     mimicTarget = targetPlayer
     
-    -- 先传送到目标旁边
     local localChar = player.Character
     if localChar then
         local localRoot = localChar:FindFirstChild("HumanoidRootPart")
@@ -527,7 +572,6 @@ local function startMimic(targetPlayer)
         end
     end
     
-    -- 开始模仿
     mimicConnection = RunService.Heartbeat:Connect(function()
         if not mimicTarget then
             stopMimic()
@@ -552,18 +596,13 @@ local function startMimic(targetPlayer)
             return
         end
         
-        -- 模仿移动方向和速度
         if targetRoot.Velocity.Magnitude > 0.5 then
-            local direction = (targetRoot.Velocity * Vector3.new(1, 0, 1)).Unit
-            local speed = targetRoot.Velocity.Magnitude
-            
-            -- 移动到目标旁边（保持偏移位置）
             local targetPosition = targetRoot.Position + mimicOffset
             local moveDirection = (targetPosition - localRoot.Position)
             
             if moveDirection.Magnitude > 0.3 then
                 localHumanoid:Move(moveDirection.Unit, false)
-                localHumanoid.WalkSpeed = speed
+                localHumanoid.WalkSpeed = targetRoot.Velocity.Magnitude
             else
                 localHumanoid:Move(Vector3.zero, false)
                 localHumanoid.WalkSpeed = 0
@@ -572,7 +611,6 @@ local function startMimic(targetPlayer)
             localHumanoid:Move(Vector3.zero, false)
             localHumanoid.WalkSpeed = 0
             
-            -- 保持偏移位置
             local targetPosition = targetRoot.Position + mimicOffset
             local distance = (targetPosition - localRoot.Position).Magnitude
             if distance > 0.5 then
@@ -580,27 +618,22 @@ local function startMimic(targetPlayer)
             end
         end
         
-        -- 模仿跳跃
         if targetHumanoid.Jump and targetHumanoid.FloorMaterial == Enum.Material.Air then
             if localHumanoid.FloorMaterial ~= Enum.Material.Air then
                 localHumanoid.Jump = true
             end
         end
         
-        -- 模仿坐下/站立
         if targetHumanoid.Sit ~= localHumanoid.Sit then
             localHumanoid.Sit = targetHumanoid.Sit
         end
         
-        -- 模仿朝向
         localRoot.CFrame = CFrame.new(localRoot.Position) * CFrame.Angles(0, targetRoot.CFrame.LookVector.Y, 0)
         
-        -- 模仿手臂和腿的动画（通过复制Motor6D角度）
         for _, targetPart in ipairs(targetChar:GetDescendants()) do
             if targetPart:IsA("Motor6D") then
                 local localPart = localChar:FindFirstChild(targetPart.Name, true)
                 if localPart and localPart:IsA("Motor6D") then
-                    -- 只模仿四肢的动画
                     if targetPart.Name:find("Right Arm") or targetPart.Name:find("Left Arm") or
                        targetPart.Name:find("Right Leg") or targetPart.Name:find("Left Leg") or
                        targetPart.Name:find("RightShoulder") or targetPart.Name:find("LeftShoulder") or
@@ -629,7 +662,6 @@ local function createMimicWindow()
     mimicWindow.BorderSizePixel = 0
     mimicWindow.ZIndex = 10002
     
-    -- 标题栏
     local titleBar = Instance.new("Frame", mimicWindow)
     titleBar.Size = UDim2.new(1, 0, 0, 30)
     titleBar.BackgroundColor3 = Color3.fromRGB(150, 0, 255)
@@ -646,7 +678,8 @@ local function createMimicWindow()
     titleText.TextSize = 15
     titleText.Font = Enum.Font.GothamBold
     titleText.TextXAlignment = Enum.TextXAlignment.Left
-    titleText.ZIndex = 10003    
+    titleText.ZIndex = 10003
+    
     local hintLabel = Instance.new("TextLabel", mimicWindow)
     hintLabel.Size = UDim2.new(1, -10, 0, 16)
     hintLabel.Position = UDim2.new(0, 5, 1, -20)
@@ -728,7 +761,6 @@ local function createMimicWindow()
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
                 nameLabel.ZIndex = 10003
                 
-                -- 如果正在模仿该玩家，改变显示
                 if mimicTarget == targetPlayer then
                     playerEntry.BackgroundColor3 = Color3.fromRGB(150, 0, 255)
                     playerEntry.BackgroundTransparency = 0.4
@@ -740,7 +772,7 @@ local function createMimicWindow()
                 mimicBtn.Position = UDim2.new(1, -62, 0, 4)
                 mimicBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 255)
                 mimicBtn.BackgroundTransparency = 0.2
-                mimicBtn.Text = mimicTarget == targetPlayer and "停止" or "模仿"
+                mimicBtn.Text = (mimicTarget == targetPlayer) and "停止" or "模仿"
                 mimicBtn.TextColor3 = Color3.new(1, 1, 1)
                 mimicBtn.TextSize = 12
                 mimicBtn.Font = Enum.Font.GothamBold
@@ -748,11 +780,9 @@ local function createMimicWindow()
                 
                 mimicBtn.MouseButton1Click:Connect(function()
                     if mimicTarget == targetPlayer then
-                        -- 停止模仿
                         stopMimic()
                         updatePlayerList()
                     else
-                        -- 开始模仿
                         startMimic(targetPlayer)
                         updatePlayerList()
                     end
@@ -772,7 +802,6 @@ local function createMimicWindow()
         updateToggle(mimicToggle, false)
     end)
     
-    -- 窗口拖动
     local dragging, dragStart, startPos = false, nil, nil
     titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1145,7 +1174,7 @@ local function disableTeleport()
     teleportEnabled = false
 end
 
--- 功能实现（保持原有的功能代码不变）
+-- 功能实现
 local function setHorizontalPose(char)
     originalMotor6DValues = {}
     for _, part in ipairs(char:GetDescendants()) do
@@ -1681,6 +1710,11 @@ ball.InputEnded:Connect(function(input, gpe)
                 menuOpen = not menuOpen
                 menu.Visible = menuOpen
                 closeBall.Visible = menuOpen
+                if menuOpen then
+                    -- 更新菜单位置和关闭按钮位置
+                    menu.Position = ball.Position + UDim2.new(0, 60, 0, 0)
+                    closeBall.Position = menu.Position + UDim2.new(1, -30, 0, 0)
+                end
             end
         end
         ballDragging = false
@@ -1717,12 +1751,6 @@ player.CharacterAdded:Connect(function(char)
     if playerCollisionEnabled then if collisionConnection then collisionConnection:Disconnect() end enablePlayerCollision() end
     if dodgeEnabled then if dodgeConnection then dodgeConnection:Disconnect() end enableDodge() end
     if orbitEnabled then if orbitConnection then orbitConnection:Disconnect() end enableOrbit() end
-    if followEnabled and followTarget then
-        stopFollow()
-        local target = followTarget
-        followTarget = nil
-        -- 重新开始跟随需要重新调用，但这里简化处理
-    end
     if mimicEnabled and mimicTarget then
         stopMimic()
         local target = mimicTarget
