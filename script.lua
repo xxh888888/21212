@@ -15,6 +15,7 @@ local aimbotEnabled, aimbotConnection, aimbotRadius, aimbotActive = false, nil, 
 local dodgeEnabled, dodgeConnection, dodgeRadius = false, nil, 15
 local orbitEnabled, orbitConnection, orbitRadius, orbitSpeed, orbitDistance, orbitTarget = false, nil, 20, 10, 5, nil
 local aimTriggerVisible, aimTriggerMoving, aimTriggerPos, aimTriggerSize, aimStrength = false, false, UDim2.new(0.5, -100, 0.5, -100), 200, 1
+local teleportEnabled, teleportWindow = false, nil
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "ProFloatUI"
@@ -331,6 +332,9 @@ orbitSpeedDisplay.TextXAlignment = Enum.TextXAlignment.Left
 local orbitSpeedSlider, orbitSpeedFill, orbitSpeedBtn, _ = createSlider(orbitCard, 1, 100, 10)
 orbitSpeedSlider.Position = UDim2.new(0, 10, 0, 164)
 
+local teleportCard = createCard(scrollingFrame, 10, 42)
+local teleportHeader, teleportToggle = createHeader(teleportCard, "传送玩家")
+
 -- 更新函数
 local function updateToggle(btn, state)
     btn.Text = state and "ON" or "OFF"
@@ -422,6 +426,213 @@ local function setOrbitSpeed(v)
     orbitSpeed = math.clamp(v, 1, 100)
     orbitSpeedDisplay.Text = "旋转速度: " .. orbitSpeed
     updateSlider(orbitSpeedFill, orbitSpeedBtn, orbitSpeed, 1, 100)
+end
+
+-- 传送玩家功能
+local function createTeleportWindow()
+    if teleportWindow then teleportWindow:Destroy() end
+    
+    teleportWindow = Instance.new("Frame", gui)
+    teleportWindow.Size = UDim2.new(0, 260, 0, 300)
+    teleportWindow.Position = UDim2.new(0.5, -130, 0.5, -150)
+    teleportWindow.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    teleportWindow.BackgroundTransparency = 0.05
+    teleportWindow.BorderSizePixel = 0
+    teleportWindow.ZIndex = 10002
+    
+    -- 标题栏
+    local titleBar = Instance.new("Frame", teleportWindow)
+    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    titleBar.BackgroundTransparency = 0.2
+    titleBar.BorderSizePixel = 0
+    titleBar.ZIndex = 10003
+    
+    local titleText = Instance.new("TextLabel", titleBar)
+    titleText.Size = UDim2.new(1, -40, 1, 0)
+    titleText.Position = UDim2.new(0, 10, 0, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "玩家列表 - 传送"
+    titleText.TextColor3 = Color3.new(1, 1, 1)
+    titleText.TextSize = 15
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.ZIndex = 10003
+    
+    -- 关闭按钮
+    local closeBtn = Instance.new("TextButton", titleBar)
+    closeBtn.Size = UDim2.new(0, 24, 0, 24)
+    closeBtn.Position = UDim2.new(1, -28, 0, 3)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+    closeBtn.BackgroundTransparency = 0.2
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.ZIndex = 10003
+    
+    -- 玩家列表滚动框架
+    local playerScrollingFrame = Instance.new("ScrollingFrame", teleportWindow)
+    playerScrollingFrame.Size = UDim2.new(1, -10, 1, -40)
+    playerScrollingFrame.Position = UDim2.new(0, 5, 0, 35)
+    playerScrollingFrame.BackgroundTransparency = 1
+    playerScrollingFrame.ScrollBarThickness = 4
+    playerScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(200, 200, 200)
+    playerScrollingFrame.ScrollBarImageTransparency = 0.5
+    playerScrollingFrame.BorderSizePixel = 0
+    playerScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    playerScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    playerScrollingFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    playerScrollingFrame.ZIndex = 10003
+    
+    local playerListLayout = Instance.new("UIListLayout", playerScrollingFrame)
+    playerListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    playerListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    playerListLayout.Padding = UDim.new(0, 4)
+    playerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    
+    -- 刷新按钮
+    local refreshBtn = Instance.new("TextButton", teleportWindow)
+    refreshBtn.Size = UDim2.new(0, 60, 0, 24)
+    refreshBtn.Position = UDim2.new(0, 10, 1, -28)
+    refreshBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    refreshBtn.BackgroundTransparency = 0.2
+    refreshBtn.Text = "刷新"
+    refreshBtn.TextColor3 = Color3.new(1, 1, 1)
+    refreshBtn.TextSize = 12
+    refreshBtn.Font = Enum.Font.GothamBold
+    refreshBtn.ZIndex = 10003
+    
+    -- 更新玩家列表函数
+    local function updatePlayerList()
+        -- 清除现有列表
+        for _, child in ipairs(playerScrollingFrame:GetChildren()) do
+            if child:IsA("Frame") then child:Destroy() end
+        end
+        
+        local orderIndex = 0
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if targetPlayer ~= player then
+                orderIndex = orderIndex + 1
+                
+                local playerEntry = Instance.new("Frame", playerScrollingFrame)
+                playerEntry.Size = UDim2.new(1, -10, 0, 36)
+                playerEntry.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                playerEntry.BackgroundTransparency = 0.3
+                playerEntry.BorderSizePixel = 0
+                playerEntry.LayoutOrder = orderIndex
+                playerEntry.ZIndex = 10003
+                
+                local nameLabel = Instance.new("TextLabel", playerEntry)
+                nameLabel.Size = UDim2.new(1, -70, 1, 0)
+                nameLabel.Position = UDim2.new(0, 8, 0, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Text = targetPlayer.Name
+                nameLabel.TextColor3 = Color3.new(1, 1, 1)
+                nameLabel.TextSize = 14
+                nameLabel.Font = Enum.Font.Gotham
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.ZIndex = 10003
+                
+                local teleportBtn = Instance.new("TextButton", playerEntry)
+                teleportBtn.Size = UDim2.new(0, 56, 0, 28)
+                teleportBtn.Position = UDim2.new(1, -62, 0, 4)
+                teleportBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 80)
+                teleportBtn.BackgroundTransparency = 0.2
+                teleportBtn.Text = "传送"
+                teleportBtn.TextColor3 = Color3.new(1, 1, 1)
+                teleportBtn.TextSize = 12
+                teleportBtn.Font = Enum.Font.GothamBold
+                teleportBtn.ZIndex = 10003
+                
+                -- 传送按钮点击事件
+                teleportBtn.MouseButton1Click:Connect(function()
+                    local localChar = player.Character
+                    if not localChar then return end
+                    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+                    if not localRoot then return end
+                    
+                    local targetChar = targetPlayer.Character
+                    if targetChar then
+                        local targetHead = targetChar:FindFirstChild("Head")
+                        if targetHead then
+                            -- 传送到目标头上方
+                            local teleportPos = targetHead.Position + Vector3.new(0, 3, 0)
+                            localRoot.CFrame = CFrame.new(teleportPos)
+                        end
+                    end
+                end)
+            end
+        end
+    end
+    
+    -- 初始加载玩家列表
+    updatePlayerList()
+    
+    -- 刷新按钮点击
+    refreshBtn.MouseButton1Click:Connect(updatePlayerList)
+    
+    -- 关闭按钮点击
+    closeBtn.MouseButton1Click:Connect(function()
+        teleportWindow:Destroy()
+        teleportWindow = nil
+        teleportEnabled = false
+        updateToggle(teleportToggle, false)
+    end)
+    
+    -- 窗口拖动
+    local dragging, dragStart, startPos = false, nil, nil
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            startPos = teleportWindow.Position
+            dragStart = Vector2.new(input.Position.X, input.Position.Y)
+        end
+    end)
+    
+    titleBar.InputEnded:Connect(function(input)
+        dragging = false
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = Vector2.new(input.Position.X, input.Position.Y) - dragStart
+            teleportWindow.Position = UDim2.new(
+                startPos.X.Scale, 
+                math.clamp(startPos.X.Offset + delta.X, 0, gui.AbsoluteSize.X - teleportWindow.AbsoluteSize.X),
+                startPos.Y.Scale,
+                math.clamp(startPos.Y.Offset + delta.Y, 0, gui.AbsoluteSize.Y - teleportWindow.AbsoluteSize.Y)
+            )
+        end
+    end)
+    
+    -- 监听玩家加入/离开自动更新列表
+    local playerAddedConnection = Players.PlayerAdded:Connect(function(newPlayer)
+        updatePlayerList()
+    end)
+    
+    local playerRemovingConnection = Players.PlayerRemoving:Connect(function(leavingPlayer)
+        updatePlayerList()
+    end)
+    
+    -- 窗口销毁时断开连接
+    teleportWindow.Destroying:Connect(function()
+        playerAddedConnection:Disconnect()
+        playerRemovingConnection:Disconnect()
+    end)
+end
+
+local function enableTeleport()
+    teleportEnabled = true
+    createTeleportWindow()
+end
+
+local function disableTeleport()
+    if teleportWindow then
+        teleportWindow:Destroy()
+        teleportWindow = nil
+    end
+    teleportEnabled = false
 end
 
 -- 功能实现
@@ -864,6 +1075,10 @@ orbitToggle.MouseButton1Down:Connect(function()
     if orbitEnabled then disableOrbit() else enableOrbit() end
     updateToggle(orbitToggle, orbitEnabled)
 end)
+teleportToggle.MouseButton1Down:Connect(function()
+    if teleportEnabled then disableTeleport() else enableTeleport() end
+    updateToggle(teleportToggle, teleportEnabled)
+end)
 
 -- 显示触发按钮
 aimTriggerToggle.MouseButton1Down:Connect(function()
@@ -978,7 +1193,7 @@ Players.PlayerRemoving:Connect(function(plr)
 end)
 
 -- 初始化
-for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle}) do
+for _, t in ipairs({speedToggle, climbToggle, flyToggle, spinToggle, espToggle, collisionToggle, aimbotToggle, dodgeToggle, orbitToggle, teleportToggle}) do
     updateToggle(t, false)
 end
 setSpeed(50); setFlySpeed(50); setFlyPanelSize(100); setSpinSpeed(50); setDodgeRadius(15)
