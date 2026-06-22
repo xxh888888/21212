@@ -1096,34 +1096,42 @@ end
 -- ========== 人物无敌 ==========
 local godModeEnabled = false
 local lastAlivePosition = nil
-local godModeConnection = nil
+local godModeTimer = nil
 
 local function startGodMode()
 	godModeEnabled = true
 	
+	-- 记录初始位置
 	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 		lastAlivePosition = player.Character.HumanoidRootPart.Position
 	end
 	
-	godModeConnection = RunService.Heartbeat:Connect(function()
-		if not godModeEnabled then return end
-		
-		local character = player.Character
-		if not character then return end
-		
-		local humanoid = character:FindFirstChild("Humanoid")
-		local rootPart = character:FindFirstChild("HumanoidRootPart")
-		if not humanoid or not rootPart then return end
-		
-		if humanoid.Health > 0 then
-			lastAlivePosition = rootPart.Position
-		else
-			if lastAlivePosition then
-				player.CharacterAdded:Wait()
-				task.wait(0.1)
-				local newChar = player.Character
-				if newChar and newChar:FindFirstChild("HumanoidRootPart") then
-					newChar.HumanoidRootPart.CFrame = CFrame.new(lastAlivePosition)
+	-- 每0.7秒检测一次
+	godModeTimer = task.spawn(function()
+		while godModeEnabled do
+			task.wait(0.7)
+			if not godModeEnabled then break end
+			
+			local character = player.Character
+			
+			-- 角色存在且活着，更新记录位置
+			if character then
+				local humanoid = character:FindFirstChild("Humanoid")
+				local rootPart = character:FindFirstChild("HumanoidRootPart")
+				if humanoid and rootPart and humanoid.Health > 0 then
+					lastAlivePosition = rootPart.Position
+				end
+			else
+				-- 角色不存在，说明死了，等待重生
+				if lastAlivePosition then
+					local newChar = player.CharacterAdded:Wait()
+					task.wait(0.2)
+					local rootPart = newChar:FindFirstChild("HumanoidRootPart")
+					if rootPart then
+						-- 传送到死亡位置后方10格
+						local tpPos = lastAlivePosition + Vector3.new(0, 3, -10)
+						rootPart.CFrame = CFrame.new(tpPos)
+					end
 				end
 			end
 		end
@@ -1132,12 +1140,8 @@ end
 
 local function stopGodMode()
 	godModeEnabled = false
-	if godModeConnection then
-		godModeConnection:Disconnect()
-		godModeConnection = nil
-	end
+	godModeTimer = nil
 end
-
 -- ========== 主循环 ==========
 RunService.RenderStepped:Connect(function()
 	updateESP()
