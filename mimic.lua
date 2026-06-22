@@ -1101,12 +1101,10 @@ local godModeTimer = nil
 local function startGodMode()
 	godModeEnabled = true
 	
-	-- 记录初始位置
 	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
 		lastAlivePosition = player.Character.HumanoidRootPart.Position
 	end
 	
-	-- 每0.7秒检测一次
 	godModeTimer = task.spawn(function()
 		while godModeEnabled do
 			task.wait(0.7)
@@ -1114,7 +1112,6 @@ local function startGodMode()
 			
 			local character = player.Character
 			
-			-- 角色存在且活着，更新记录位置
 			if character then
 				local humanoid = character:FindFirstChild("Humanoid")
 				local rootPart = character:FindFirstChild("HumanoidRootPart")
@@ -1122,14 +1119,14 @@ local function startGodMode()
 					lastAlivePosition = rootPart.Position
 				end
 			else
-				-- 角色不存在，说明死了，等待重生
 				if lastAlivePosition then
 					local newChar = player.CharacterAdded:Wait()
 					task.wait(0.2)
 					local rootPart = newChar:FindFirstChild("HumanoidRootPart")
 					if rootPart then
-						-- 传送到死亡位置后方10格
-						local tpPos = lastAlivePosition + Vector3.new(0, 3, -10)
+						-- 传送到死亡位置前方10格+上方5格
+						local forwardDir = newChar.HumanoidRootPart.CFrame.LookVector
+						local tpPos = lastAlivePosition + forwardDir * 10 + Vector3.new(0, 5, 0)
 						rootPart.CFrame = CFrame.new(tpPos)
 					end
 				end
