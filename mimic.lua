@@ -234,7 +234,6 @@ rightPanel.ZIndex = 7
 rightPanel.Parent = mainFrame
 Instance.new("UICorner", rightPanel).CornerRadius = UDim.new(0, 12)
 
--- 为rightPanel添加裁剪，防止切换动画时内容溢出
 local rightClipFrame = Instance.new("Frame")
 rightClipFrame.Size = UDim2.new(1, 0, 1, 0)
 rightClipFrame.Position = UDim2.new(0, 0, 0, 0)
@@ -362,6 +361,8 @@ confirmBtn.MouseButton1Click:Connect(function()
 		flyEnabled = false
 		stopFly()
 		speedEnabled = false
+		fpsEnabled = false
+		stopFPS()
 		TweenService:Create(blurEffect, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 0}):Play()
 		task.wait(0.3)
 		blurEffect:Destroy()
@@ -409,50 +410,34 @@ local function switchToTab(targetIndex, fromDirection)
 		return
 	end
 	
-	-- 判断切换方向：如果没有指定方向，根据索引判断（向下=右，向上=左）
 	local direction = fromDirection or (targetIndex > currentTabIndex and "right" or "left")
 	
-	-- 当前页面滑出动画
 	local oldStartPos, oldEndPos
-	-- 新页面滑入起始位置
 	local newStartPos, newEndPos
 	
 	if direction == "right" then
-		-- 旧页面向左滑出，新页面从右边滑入
 		oldStartPos = UDim2.new(0, 0, 0, 0)
 		oldEndPos = UDim2.new(0, -rightClipFrame.AbsoluteSize.X, 0, 0)
 		newStartPos = UDim2.new(0, rightClipFrame.AbsoluteSize.X, 0, 0)
 		newEndPos = UDim2.new(0, 0, 0, 0)
 	else
-		-- 旧页面向右滑出，新页面从左边滑入
 		oldStartPos = UDim2.new(0, 0, 0, 0)
 		oldEndPos = UDim2.new(0, rightClipFrame.AbsoluteSize.X, 0, 0)
 		newStartPos = UDim2.new(0, -rightClipFrame.AbsoluteSize.X, 0, 0)
 		newEndPos = UDim2.new(0, 0, 0, 0)
 	end
 	
-	-- 显示新页面并设置初始位置
 	newContent.Visible = true
 	newContent.Position = newStartPos
 	
-	-- 执行动画
 	local animDuration = 0.35
 	
 	local oldTweenInfo = TweenInfo.new(animDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-	local newTweenInfo = TweenInfo.new(animDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	local newTweenInfo = TweenInfo.new(animDuration * 1.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	
-	-- 给新页面添加一点弹性效果
-	if direction == "right" then
-		newTweenInfo = TweenInfo.new(animDuration * 1.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	else
-		newTweenInfo = TweenInfo.new(animDuration * 1.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	end
-	
-	-- 同时添加透明度变化
 	local fadeOutInfo = TweenInfo.new(animDuration * 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	local fadeInInfo = TweenInfo.new(animDuration * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	
-	-- 旧页面淡出+滑出
 	for _, child in ipairs(oldContent:GetDescendants()) do
 		if child:IsA("TextLabel") or child:IsA("TextButton") then
 			TweenService:Create(child, fadeOutInfo, {TextTransparency = 1}):Play()
@@ -464,15 +449,13 @@ local function switchToTab(targetIndex, fromDirection)
 	local oldTween = TweenService:Create(oldContent, oldTweenInfo, {Position = oldEndPos})
 	oldTween:Play()
 	
-	-- 新页面滑入
 	local newTween = TweenService:Create(newContent, newTweenInfo, {Position = newEndPos})
 	newTween:Play()
 	
-	-- 新页面淡入
 	for _, child in ipairs(newContent:GetDescendants()) do
 		if child:IsA("TextLabel") then
 			child.TextTransparency = 1
-			TweenService:Create(child, fadeInInfo, {TextTransparency = child.Name == "TitleGradient" and 0.5 or 0}):Play()
+			TweenService:Create(child, fadeInInfo, {TextTransparency = 0}):Play()
 		elseif child:IsA("TextButton") then
 			child.TextTransparency = 1
 			TweenService:Create(child, fadeInInfo, {TextTransparency = 0}):Play()
@@ -480,18 +463,14 @@ local function switchToTab(targetIndex, fromDirection)
 	end
 	
 	newTween.Completed:Connect(function()
-		-- 动画完成后清理
 		oldContent.Visible = false
 		oldContent.Position = UDim2.new(0, 0, 0, 0)
 		
-		-- 恢复旧页面的透明度
 		for _, child in ipairs(oldContent:GetDescendants()) do
 			if child:IsA("TextLabel") then
 				child.TextTransparency = 0
 			elseif child:IsA("TextButton") then
 				child.TextTransparency = 0
-			elseif child:IsA("Frame") and child.BackgroundTransparency > 0 then
-				-- 保持原有透明度
 			end
 		end
 		
@@ -810,7 +789,6 @@ end
 
 -- ========== 强锁自瞄 ==========
 local aimbotEnabled = false
-local aimbotTarget = nil
 
 local function getClosestEnemy()
 	local camera = workspace.CurrentCamera
@@ -959,19 +937,15 @@ local function startFly()
 		if not camera then return end
 		if not humanoid or not humanoid.Parent then return end
 		
-		-- 角色朝向跟随镜头
 		local camLook = camera.CFrame.LookVector
 		flyBodyGyro.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + camLook)
 		
-		-- 读取轮盘输入
 		local moveDir = humanoid.MoveDirection
 		local isMoving = moveDir.Magnitude > 0.1
 		
 		if isMoving then
-			-- 轮盘推着就往镜头看向的方向飞
 			local flyDir = camLook
 			
-			-- 跳跃按钮上升
 			if UserInputService.TouchEnabled and humanoid.Jump then
 				flyDir = flyDir + Vector3.new(0, 1, 0)
 			end
@@ -982,7 +956,6 @@ local function startFly()
 			
 			flyBodyVelocity.Velocity = flyDir * flySpeed
 		else
-			-- 不推轮盘就悬停
 			flyBodyVelocity.Velocity = Vector3.zero
 		end
 	end)
@@ -1117,6 +1090,175 @@ end
 
 if player.Character and player.Character:FindFirstChild("Humanoid") then
 	originalWalkSpeed = player.Character.Humanoid.WalkSpeed
+end
+
+-- ========== 帧率显示与修改 ==========
+local fpsEnabled = false
+local targetFPS = 60
+local fpsConnection = nil
+local frameCount = 0
+local fpsTimer = 0
+local currentFPS = 60
+
+-- 帧率显示标签（左上角）
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Name = "FPSLabel"
+fpsLabel.Size = UDim2.new(0, 100, 0, 26)
+fpsLabel.Position = UDim2.new(0, 10, 0, 10)
+fpsLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+fpsLabel.BackgroundTransparency = 0.4
+fpsLabel.Text = "FPS: 60"
+fpsLabel.TextColor3 = Color3.new(0, 1, 0)
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextSize = 14
+fpsLabel.BorderSizePixel = 0
+fpsLabel.Visible = false
+fpsLabel.ZIndex = 50
+fpsLabel.Parent = screenGui
+Instance.new("UICorner", fpsLabel).CornerRadius = UDim.new(0, 6)
+
+-- 帧率滑动条容器
+local fpsSliderContainer = Instance.new("Frame")
+fpsSliderContainer.Name = "FPSSliderContainer"
+fpsSliderContainer.Size = UDim2.new(0, 260, 0, 50)
+fpsSliderContainer.Position = UDim2.new(0.5, -130, 0, 140)
+fpsSliderContainer.BackgroundColor3 = Color3.new(0, 0, 0)
+fpsSliderContainer.BackgroundTransparency = 0.3
+fpsSliderContainer.BorderSizePixel = 0
+fpsSliderContainer.Visible = false
+fpsSliderContainer.ZIndex = 50
+fpsSliderContainer.Parent = screenGui
+Instance.new("UICorner", fpsSliderContainer).CornerRadius = UDim.new(0, 12)
+
+local fpsValueLabel = Instance.new("TextLabel")
+fpsValueLabel.Size = UDim2.new(1, 0, 0, 20)
+fpsValueLabel.Position = UDim2.new(0, 0, 0, 4)
+fpsValueLabel.BackgroundTransparency = 1
+fpsValueLabel.Text = "目标帧率: 60"
+fpsValueLabel.TextColor3 = Color3.new(1, 1, 1)
+fpsValueLabel.Font = Enum.Font.GothamBold
+fpsValueLabel.TextSize = 12
+fpsValueLabel.ZIndex = 51
+fpsValueLabel.Parent = fpsSliderContainer
+
+local sliderBg = Instance.new("Frame")
+sliderBg.Size = UDim2.new(1, -20, 0, 6)
+sliderBg.Position = UDim2.new(0, 10, 0, 30)
+sliderBg.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+sliderBg.BorderSizePixel = 0
+sliderBg.ZIndex = 51
+sliderBg.Parent = fpsSliderContainer
+Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(0, 3)
+
+local sliderFill = Instance.new("Frame")
+sliderFill.Size = UDim2.new(0.478, 0, 1, 0)
+sliderFill.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
+sliderFill.BorderSizePixel = 0
+sliderFill.ZIndex = 52
+sliderFill.Parent = sliderBg
+Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(0, 3)
+
+local sliderKnob = Instance.new("TextButton")
+sliderKnob.Size = UDim2.new(0, 18, 0, 18)
+sliderKnob.Position = UDim2.new(0.478, -9, 0.5, -9)
+sliderKnob.BackgroundColor3 = Color3.new(1, 1, 1)
+sliderKnob.Text = ""
+sliderKnob.BorderSizePixel = 0
+sliderKnob.ZIndex = 53
+sliderKnob.Parent = sliderBg
+Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
+
+local isDraggingSlider = false
+
+local function updateSliderByValue(value)
+	local percent = (value - 5) / 115
+	percent = math.clamp(percent, 0, 1)
+	sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+	sliderKnob.Position = UDim2.new(percent, -9, 0.5, -9)
+	targetFPS = math.floor(value)
+	fpsValueLabel.Text = "目标帧率: " .. targetFPS
+end
+
+sliderKnob.MouseButton1Down:Connect(function()
+	isDraggingSlider = true
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or
+	   input.UserInputType == Enum.UserInputType.Touch then
+		isDraggingSlider = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if isDraggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or
+	   input.UserInputType == Enum.UserInputType.Touch) then
+		local mousePos = UserInputService:GetMouseLocation()
+		local sliderAbsPos = sliderBg.AbsolutePosition
+		local sliderAbsSize = sliderBg.AbsoluteSize
+		local relativeX = mousePos.X - sliderAbsPos.X
+		local percent = math.clamp(relativeX / sliderAbsSize.X, 0, 1)
+		local value = 5 + percent * 115
+		updateSliderByValue(value)
+	end
+end)
+
+sliderBg.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or
+	   input.UserInputType == Enum.UserInputType.Touch then
+		isDraggingSlider = true
+		local mousePos = UserInputService:GetMouseLocation()
+		local sliderAbsPos = sliderBg.AbsolutePosition
+		local sliderAbsSize = sliderBg.AbsoluteSize
+		local relativeX = mousePos.X - sliderAbsPos.X
+		local percent = math.clamp(relativeX / sliderAbsSize.X, 0, 1)
+		local value = 5 + percent * 115
+		updateSliderByValue(value)
+	end
+end)
+
+local function updateFPSDisplay()
+	frameCount = frameCount + 1
+	fpsTimer = fpsTimer + task.wait()
+	
+	if fpsTimer >= 0.5 then
+		currentFPS = math.floor(frameCount / fpsTimer)
+		frameCount = 0
+		fpsTimer = 0
+		
+		local color = currentFPS >= 50 and Color3.new(0, 1, 0) or
+					  (currentFPS >= 25 and Color3.new(1, 1, 0) or Color3.new(1, 0, 0))
+		fpsLabel.Text = "FPS: " .. currentFPS
+		fpsLabel.TextColor3 = color
+	end
+	
+	-- 真实修改帧率
+	if fpsEnabled then
+		local step = 1 / targetFPS
+		local now = tick()
+		repeat task.wait() until tick() - now >= step
+	end
+end
+
+local function startFPS()
+	fpsEnabled = true
+	frameCount = 0
+	fpsTimer = 0
+	fpsLabel.Visible = true
+	fpsSliderContainer.Visible = true
+	
+	-- 启动帧率控制
+	spawn(function()
+		while fpsEnabled do
+			updateFPSDisplay()
+		end
+	end)
+end
+
+local function stopFPS()
+	fpsEnabled = false
+	fpsLabel.Visible = false
+	fpsSliderContainer.Visible = false
 end
 
 -- ========== 主循环 ==========
@@ -1345,6 +1487,33 @@ for i, name in ipairs(tabNames) do
 				speedToggle.Text = "奔跑速度修改: 关闭"
 				speedToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
 				stopSpeed()
+			end
+		end)
+		
+		-- 帧率显示与修改
+		local fpsToggle = Instance.new("TextButton")
+		fpsToggle.Name = "FPSToggle"
+		fpsToggle.Size = UDim2.new(1, -5, 0, 40)
+		fpsToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
+		fpsToggle.BackgroundTransparency = 0.2
+		fpsToggle.Text = "帧率显示与修改: 关闭"
+		fpsToggle.TextColor3 = Color3.new(1, 1, 1)
+		fpsToggle.Font = Enum.Font.GothamBold
+		fpsToggle.TextSize = 15
+		fpsToggle.ZIndex = 8
+		fpsToggle.Parent = funcScrollingFrame
+		Instance.new("UICorner", fpsToggle).CornerRadius = UDim.new(0, 8)
+		
+		fpsToggle.MouseButton1Click:Connect(function()
+			fpsEnabled = not fpsEnabled
+			if fpsEnabled then
+				fpsToggle.Text = "帧率显示与修改: 开启"
+				fpsToggle.BackgroundColor3 = Color3.new(0.2, 0.5, 0.3)
+				startFPS()
+			else
+				fpsToggle.Text = "帧率显示与修改: 关闭"
+				fpsToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
+				stopFPS()
 			end
 		end)
 		
