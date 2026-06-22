@@ -356,23 +356,27 @@ end)
 
 confirmBtn.MouseButton1Click:Connect(function()
 	hideConfirmDialog(function()
+		-- 关闭所有功能
 		espEnabled = false
 		aimbotEnabled = false
-		flyEnabled = false
-		stopFly()
-		speedEnabled = false
-		godModeEnabled = false
-		fpsEnabled = false
-		stopFPS()
+		if flyEnabled then
+			flyEnabled = false
+			stopFly()
+		end
+		if speedEnabled then
+			speedEnabled = false
+			stopSpeed()
+		end
+		if godModeEnabled then
+			godModeEnabled = false
+			if godModeTimer then godModeTimer = nil end
+		end
+		-- 关闭景深效果
 		TweenService:Create(blurEffect, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 0}):Play()
 		task.wait(0.3)
 		blurEffect:Destroy()
 		screenGui:Destroy()
 	end)
-end)
-
-closeButton.MouseButton1Click:Connect(function()
-	showConfirmDialog()
 end)
 
 -- ========== 选项卡 ==========
@@ -1093,52 +1097,7 @@ if player.Character and player.Character:FindFirstChild("Humanoid") then
 	originalWalkSpeed = player.Character.Humanoid.WalkSpeed
 end
 
--- ========== 人物无敌 ==========
-local godModeEnabled = false
-local lastAlivePosition = nil
-local godModeTimer = nil
 
-local function startGodMode()
-	godModeEnabled = true
-	
-	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-		lastAlivePosition = player.Character.HumanoidRootPart.Position
-	end
-	
-	godModeTimer = task.spawn(function()
-		while godModeEnabled do
-			task.wait(0.7)
-			if not godModeEnabled then break end
-			
-			local character = player.Character
-			
-			if character then
-				local humanoid = character:FindFirstChild("Humanoid")
-				local rootPart = character:FindFirstChild("HumanoidRootPart")
-				if humanoid and rootPart and humanoid.Health > 0 then
-					lastAlivePosition = rootPart.Position
-				end
-			else
-				if lastAlivePosition then
-					local newChar = player.CharacterAdded:Wait()
-					task.wait(0.2)
-					local rootPart = newChar:FindFirstChild("HumanoidRootPart")
-					if rootPart then
-						-- 传送到死亡位置前方10格+上方5格
-						local forwardDir = newChar.HumanoidRootPart.CFrame.LookVector
-						local tpPos = lastAlivePosition + forwardDir * 10 + Vector3.new(0, 5, 0)
-						rootPart.CFrame = CFrame.new(tpPos)
-					end
-				end
-			end
-		end
-	end)
-end
-
-local function stopGodMode()
-	godModeEnabled = false
-	godModeTimer = nil
-end
 -- ========== 主循环 ==========
 RunService.RenderStepped:Connect(function()
 	updateESP()
@@ -1183,7 +1142,7 @@ for i, name in ipairs(tabNames) do
 		textLabel.Size = UDim2.new(1, 0, 1, 0)
 		textLabel.Position = UDim2.new(0, 0, 0, 0)
 		textLabel.BackgroundTransparency = 1
-		textLabel.Text = "本辅助暂时公益\n反馈可延长公益时长"
+		textLabel.Text = "本辅助暂时公益\n反馈可延长公益时间\n反馈频道:@PJnbyyds\n反馈q群:157972073"
 		textLabel.TextColor3 = Color3.new(1, 1, 1)
 		textLabel.Font = Enum.Font.Gotham
 		textLabel.TextSize = 20
@@ -1289,33 +1248,7 @@ for i, name in ipairs(tabNames) do
 		funcLayout.Padding = UDim.new(0, 8)
 		funcLayout.Parent = funcScrollingFrame
 		
-		-- 人物无敌
-local godModeToggle = Instance.new("TextButton")
-godModeToggle.Name = "GodModeToggle"
-godModeToggle.Size = UDim2.new(1, -5, 0, 40)
-godModeToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
-godModeToggle.BackgroundTransparency = 0.2
-godModeToggle.Text = "人物无敌: 关闭"
-godModeToggle.TextColor3 = Color3.new(1, 1, 1)
-godModeToggle.Font = Enum.Font.GothamBold
-godModeToggle.TextSize = 15
-godModeToggle.ZIndex = 8
-godModeToggle.Parent = funcScrollingFrame
-Instance.new("UICorner", godModeToggle).CornerRadius = UDim.new(0, 8)
 
-godModeToggle.MouseButton1Click:Connect(function()
-	godModeEnabled = not godModeEnabled
-	if godModeEnabled then
-		godModeToggle.Text = "人物无敌: 开启"
-		godModeToggle.BackgroundColor3 = Color3.new(0.2, 0.5, 0.3)
-		startGodMode()
-	else
-		godModeToggle.Text = "人物无敌: 关闭"
-		godModeToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
-		stopGodMode()
-	end
-end)
-		
 		-- 强锁自瞄
 		local aimbotToggle = Instance.new("TextButton")
 		aimbotToggle.Name = "AimbotToggle"
