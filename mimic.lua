@@ -1129,7 +1129,7 @@ for i, name in ipairs(tabNames) do
 		textLabel.Size = UDim2.new(1, 0, 1, 0)
 		textLabel.Position = UDim2.new(0, 0, 0, 0)
 		textLabel.BackgroundTransparency = 1
-		textLabel.Text = "本辅助暂时公益\n反馈可延长公益时长"
+		textLabel.Text = "本辅助暂时公益有什么不足的地方或功能可以反馈哦\n反馈可延长公益时间\n反馈频道:@PJnbyyds\n反馈q群:157972073"
 		textLabel.TextColor3 = Color3.new(1, 1, 1)
 		textLabel.Font = Enum.Font.Gotham
 		textLabel.TextSize = 20
