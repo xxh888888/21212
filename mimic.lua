@@ -361,6 +361,7 @@ confirmBtn.MouseButton1Click:Connect(function()
 		flyEnabled = false
 		stopFly()
 		speedEnabled = false
+		godModeEnabled = false
 		fpsEnabled = false
 		stopFPS()
 		TweenService:Create(blurEffect, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 0}):Play()
@@ -1092,173 +1093,49 @@ if player.Character and player.Character:FindFirstChild("Humanoid") then
 	originalWalkSpeed = player.Character.Humanoid.WalkSpeed
 end
 
--- ========== 帧率显示与修改 ==========
-local fpsEnabled = false
-local targetFPS = 60
-local fpsConnection = nil
-local frameCount = 0
-local fpsTimer = 0
-local currentFPS = 60
+-- ========== 人物无敌 ==========
+local godModeEnabled = false
+local lastAlivePosition = nil
+local godModeConnection = nil
 
--- 帧率显示标签（左上角）
-local fpsLabel = Instance.new("TextLabel")
-fpsLabel.Name = "FPSLabel"
-fpsLabel.Size = UDim2.new(0, 100, 0, 26)
-fpsLabel.Position = UDim2.new(0, 10, 0, 10)
-fpsLabel.BackgroundColor3 = Color3.new(0, 0, 0)
-fpsLabel.BackgroundTransparency = 0.4
-fpsLabel.Text = "FPS: 60"
-fpsLabel.TextColor3 = Color3.new(0, 1, 0)
-fpsLabel.Font = Enum.Font.GothamBold
-fpsLabel.TextSize = 14
-fpsLabel.BorderSizePixel = 0
-fpsLabel.Visible = false
-fpsLabel.ZIndex = 50
-fpsLabel.Parent = screenGui
-Instance.new("UICorner", fpsLabel).CornerRadius = UDim.new(0, 6)
-
--- 帧率滑动条容器
-local fpsSliderContainer = Instance.new("Frame")
-fpsSliderContainer.Name = "FPSSliderContainer"
-fpsSliderContainer.Size = UDim2.new(0, 260, 0, 50)
-fpsSliderContainer.Position = UDim2.new(0.5, -130, 0, 140)
-fpsSliderContainer.BackgroundColor3 = Color3.new(0, 0, 0)
-fpsSliderContainer.BackgroundTransparency = 0.3
-fpsSliderContainer.BorderSizePixel = 0
-fpsSliderContainer.Visible = false
-fpsSliderContainer.ZIndex = 50
-fpsSliderContainer.Parent = screenGui
-Instance.new("UICorner", fpsSliderContainer).CornerRadius = UDim.new(0, 12)
-
-local fpsValueLabel = Instance.new("TextLabel")
-fpsValueLabel.Size = UDim2.new(1, 0, 0, 20)
-fpsValueLabel.Position = UDim2.new(0, 0, 0, 4)
-fpsValueLabel.BackgroundTransparency = 1
-fpsValueLabel.Text = "目标帧率: 60"
-fpsValueLabel.TextColor3 = Color3.new(1, 1, 1)
-fpsValueLabel.Font = Enum.Font.GothamBold
-fpsValueLabel.TextSize = 12
-fpsValueLabel.ZIndex = 51
-fpsValueLabel.Parent = fpsSliderContainer
-
-local sliderBg = Instance.new("Frame")
-sliderBg.Size = UDim2.new(1, -20, 0, 6)
-sliderBg.Position = UDim2.new(0, 10, 0, 30)
-sliderBg.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-sliderBg.BorderSizePixel = 0
-sliderBg.ZIndex = 51
-sliderBg.Parent = fpsSliderContainer
-Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(0, 3)
-
-local sliderFill = Instance.new("Frame")
-sliderFill.Size = UDim2.new(0.478, 0, 1, 0)
-sliderFill.BackgroundColor3 = Color3.new(0.2, 0.6, 1)
-sliderFill.BorderSizePixel = 0
-sliderFill.ZIndex = 52
-sliderFill.Parent = sliderBg
-Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(0, 3)
-
-local sliderKnob = Instance.new("TextButton")
-sliderKnob.Size = UDim2.new(0, 18, 0, 18)
-sliderKnob.Position = UDim2.new(0.478, -9, 0.5, -9)
-sliderKnob.BackgroundColor3 = Color3.new(1, 1, 1)
-sliderKnob.Text = ""
-sliderKnob.BorderSizePixel = 0
-sliderKnob.ZIndex = 53
-sliderKnob.Parent = sliderBg
-Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
-
-local isDraggingSlider = false
-
-local function updateSliderByValue(value)
-	local percent = (value - 5) / 115
-	percent = math.clamp(percent, 0, 1)
-	sliderFill.Size = UDim2.new(percent, 0, 1, 0)
-	sliderKnob.Position = UDim2.new(percent, -9, 0.5, -9)
-	targetFPS = math.floor(value)
-	fpsValueLabel.Text = "目标帧率: " .. targetFPS
-end
-
-sliderKnob.MouseButton1Down:Connect(function()
-	isDraggingSlider = true
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or
-	   input.UserInputType == Enum.UserInputType.Touch then
-		isDraggingSlider = false
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if isDraggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or
-	   input.UserInputType == Enum.UserInputType.Touch) then
-		local mousePos = UserInputService:GetMouseLocation()
-		local sliderAbsPos = sliderBg.AbsolutePosition
-		local sliderAbsSize = sliderBg.AbsoluteSize
-		local relativeX = mousePos.X - sliderAbsPos.X
-		local percent = math.clamp(relativeX / sliderAbsSize.X, 0, 1)
-		local value = 5 + percent * 115
-		updateSliderByValue(value)
-	end
-end)
-
-sliderBg.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or
-	   input.UserInputType == Enum.UserInputType.Touch then
-		isDraggingSlider = true
-		local mousePos = UserInputService:GetMouseLocation()
-		local sliderAbsPos = sliderBg.AbsolutePosition
-		local sliderAbsSize = sliderBg.AbsoluteSize
-		local relativeX = mousePos.X - sliderAbsPos.X
-		local percent = math.clamp(relativeX / sliderAbsSize.X, 0, 1)
-		local value = 5 + percent * 115
-		updateSliderByValue(value)
-	end
-end)
-
-local function updateFPSDisplay()
-	frameCount = frameCount + 1
-	fpsTimer = fpsTimer + task.wait()
+local function startGodMode()
+	godModeEnabled = true
 	
-	if fpsTimer >= 0.5 then
-		currentFPS = math.floor(frameCount / fpsTimer)
-		frameCount = 0
-		fpsTimer = 0
+	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+		lastAlivePosition = player.Character.HumanoidRootPart.Position
+	end
+	
+	godModeConnection = RunService.Heartbeat:Connect(function()
+		if not godModeEnabled then return end
 		
-		local color = currentFPS >= 50 and Color3.new(0, 1, 0) or
-					  (currentFPS >= 25 and Color3.new(1, 1, 0) or Color3.new(1, 0, 0))
-		fpsLabel.Text = "FPS: " .. currentFPS
-		fpsLabel.TextColor3 = color
-	end
-	
-	-- 真实修改帧率
-	if fpsEnabled then
-		local step = 1 / targetFPS
-		local now = tick()
-		repeat task.wait() until tick() - now >= step
-	end
-end
-
-local function startFPS()
-	fpsEnabled = true
-	frameCount = 0
-	fpsTimer = 0
-	fpsLabel.Visible = true
-	fpsSliderContainer.Visible = true
-	
-	-- 启动帧率控制
-	spawn(function()
-		while fpsEnabled do
-			updateFPSDisplay()
+		local character = player.Character
+		if not character then return end
+		
+		local humanoid = character:FindFirstChild("Humanoid")
+		local rootPart = character:FindFirstChild("HumanoidRootPart")
+		if not humanoid or not rootPart then return end
+		
+		if humanoid.Health > 0 then
+			lastAlivePosition = rootPart.Position
+		else
+			if lastAlivePosition then
+				player.CharacterAdded:Wait()
+				task.wait(0.1)
+				local newChar = player.Character
+				if newChar and newChar:FindFirstChild("HumanoidRootPart") then
+					newChar.HumanoidRootPart.CFrame = CFrame.new(lastAlivePosition)
+				end
+			end
 		end
 	end)
 end
 
-local function stopFPS()
-	fpsEnabled = false
-	fpsLabel.Visible = false
-	fpsSliderContainer.Visible = false
+local function stopGodMode()
+	godModeEnabled = false
+	if godModeConnection then
+		godModeConnection:Disconnect()
+		godModeConnection = nil
+	end
 end
 
 -- ========== 主循环 ==========
@@ -1410,6 +1287,33 @@ for i, name in ipairs(tabNames) do
 		local funcLayout = Instance.new("UIListLayout")
 		funcLayout.Padding = UDim.new(0, 8)
 		funcLayout.Parent = funcScrollingFrame
+		
+		-- 人物无敌
+local godModeToggle = Instance.new("TextButton")
+godModeToggle.Name = "GodModeToggle"
+godModeToggle.Size = UDim2.new(1, -5, 0, 40)
+godModeToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
+godModeToggle.BackgroundTransparency = 0.2
+godModeToggle.Text = "人物无敌: 关闭"
+godModeToggle.TextColor3 = Color3.new(1, 1, 1)
+godModeToggle.Font = Enum.Font.GothamBold
+godModeToggle.TextSize = 15
+godModeToggle.ZIndex = 8
+godModeToggle.Parent = funcScrollingFrame
+Instance.new("UICorner", godModeToggle).CornerRadius = UDim.new(0, 8)
+
+godModeToggle.MouseButton1Click:Connect(function()
+	godModeEnabled = not godModeEnabled
+	if godModeEnabled then
+		godModeToggle.Text = "人物无敌: 开启"
+		godModeToggle.BackgroundColor3 = Color3.new(0.2, 0.5, 0.3)
+		startGodMode()
+	else
+		godModeToggle.Text = "人物无敌: 关闭"
+		godModeToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
+		stopGodMode()
+	end
+end)
 		
 		-- 强锁自瞄
 		local aimbotToggle = Instance.new("TextButton")
