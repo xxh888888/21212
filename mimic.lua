@@ -1142,7 +1142,7 @@ for i, name in ipairs(tabNames) do
 		textLabel.Size = UDim2.new(1, 0, 1, 0)
 		textLabel.Position = UDim2.new(0, 0, 0, 0)
 		textLabel.BackgroundTransparency = 1
-		textLabel.Text = "本辅助暂时公益\n反馈可延长公益时间\n反馈频道:@PJnbyyds\n反馈q群:157972073"
+		textLabel.Text = "本辅助暂时公益有什么不足的地方或功能可以反馈哦\n反馈可延长公益时间\n反馈频道:@PJnbyyds\n反馈q群:157972073"
 		textLabel.TextColor3 = Color3.new(1, 1, 1)
 		textLabel.Font = Enum.Font.Gotham
 		textLabel.TextSize = 20
@@ -1328,33 +1328,7 @@ for i, name in ipairs(tabNames) do
 			end
 		end)
 		
-		-- 帧率显示与修改
-		local fpsToggle = Instance.new("TextButton")
-		fpsToggle.Name = "FPSToggle"
-		fpsToggle.Size = UDim2.new(1, -5, 0, 40)
-		fpsToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
-		fpsToggle.BackgroundTransparency = 0.2
-		fpsToggle.Text = "帧率显示与修改: 关闭"
-		fpsToggle.TextColor3 = Color3.new(1, 1, 1)
-		fpsToggle.Font = Enum.Font.GothamBold
-		fpsToggle.TextSize = 15
-		fpsToggle.ZIndex = 8
-		fpsToggle.Parent = funcScrollingFrame
-		Instance.new("UICorner", fpsToggle).CornerRadius = UDim.new(0, 8)
-		
-		fpsToggle.MouseButton1Click:Connect(function()
-			fpsEnabled = not fpsEnabled
-			if fpsEnabled then
-				fpsToggle.Text = "帧率显示与修改: 开启"
-				fpsToggle.BackgroundColor3 = Color3.new(0.2, 0.5, 0.3)
-				startFPS()
-			else
-				fpsToggle.Text = "帧率显示与修改: 关闭"
-				fpsToggle.BackgroundColor3 = Color3.new(0.15, 0.15, 0.2)
-				stopFPS()
-			end
-		end)
-		
+
 		funcScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, funcLayout.AbsoluteContentSize.Y + 10)
 		funcLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 			funcScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, funcLayout.AbsoluteContentSize.Y + 10)
