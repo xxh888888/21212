@@ -360,6 +360,7 @@ confirmBtn.MouseButton1Click:Connect(function()
 		espEnabled = false
 		aimbotEnabled = false
 		flyEnabled = false
+		stopFly()
 		speedEnabled = false
 		TweenService:Create(blurEffect, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 0}):Play()
 		task.wait(0.3)
@@ -912,15 +913,13 @@ flySpeedLabel.Parent = flySpeedBar
 local function updateFlySpeedDisplay()
 	flySpeedLabel.Text = "飞行速度: " .. flySpeed
 	if flyBodyVelocity then
-		flyBodyVelocity.MaxForce = Vector3.new(flySpeed * 100, flySpeed * 100, flySpeed * 100)
+		flyBodyVelocity.MaxForce = Vector3.new(1, 1, 1) * flySpeed * 200
 	end
 end
 
 flyMinusBtn.MouseButton1Click:Connect(function()
-	if flySpeed > 10 then
-		flySpeed = flySpeed - 10
-		updateFlySpeedDisplay()
-	end
+	flySpeed = math.max(10, flySpeed - 10)
+	updateFlySpeedDisplay()
 end)
 
 flyPlusBtn.MouseButton1Click:Connect(function()
@@ -929,63 +928,63 @@ flyPlusBtn.MouseButton1Click:Connect(function()
 end)
 
 local function startFly()
-	if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+	local character = player.Character
+	if not character then return end
 	
-	local rootPart = player.Character.HumanoidRootPart
-	local humanoid = player.Character:FindFirstChild("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChild("Humanoid")
+	if not rootPart or not humanoid then return end
 	
-	if humanoid then
-		humanoid.PlatformStand = true
-	end
+	humanoid.PlatformStand = true
 	
 	flyBodyVelocity = Instance.new("BodyVelocity")
 	flyBodyVelocity.Velocity = Vector3.zero
-	flyBodyVelocity.MaxForce = Vector3.new(flySpeed * 100, flySpeed * 100, flySpeed * 100)
-	flyBodyVelocity.P = 1000
+	flyBodyVelocity.MaxForce = Vector3.new(1, 1, 1) * flySpeed * 200
+	flyBodyVelocity.P = 10000
 	flyBodyVelocity.Parent = rootPart
 	
 	flyBodyGyro = Instance.new("BodyGyro")
-	flyBodyGyro.CFrame = rootPart.CFrame
-	flyBodyGyro.MaxTorque = Vector3.new(1, 1, 1) * 400000
-	flyBodyGyro.P = 30000
+	flyBodyGyro.MaxTorque = Vector3.new(1, 1, 1) * 40000
+	flyBodyGyro.P = 3000
 	flyBodyGyro.Parent = rootPart
 	
 	local camera = workspace.CurrentCamera
 	
 	flyConnection = RunService.Heartbeat:Connect(function()
 		if not flyEnabled then return end
-		if not player.Character or not rootPart or not rootPart.Parent then return end
+		if not player.Character or not rootPart or not rootPart.Parent then
+			stopFly()
+			return
+		end
 		if not camera then return end
+		if not humanoid or not humanoid.Parent then return end
 		
-		local camCF = camera.CFrame
-		flyBodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + camCF.LookVector)
+		-- 角色朝向跟随镜头
+		local camLook = camera.CFrame.LookVector
+		flyBodyGyro.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + camLook)
 		
-		local moveDirection = Vector3.zero
+		-- 读取轮盘输入
+		local moveDir = humanoid.MoveDirection
+		local isMoving = moveDir.Magnitude > 0.1
 		
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-			moveDirection = moveDirection + camCF.LookVector
+		if isMoving then
+			-- 轮盘推着就往镜头看向的方向飞
+			local flyDir = camLook
+			
+			-- 跳跃按钮上升
+			if UserInputService.TouchEnabled and humanoid.Jump then
+				flyDir = flyDir + Vector3.new(0, 1, 0)
+			end
+			
+			if flyDir.Magnitude > 1 then
+				flyDir = flyDir.Unit
+			end
+			
+			flyBodyVelocity.Velocity = flyDir * flySpeed
+		else
+			-- 不推轮盘就悬停
+			flyBodyVelocity.Velocity = Vector3.zero
 		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-			moveDirection = moveDirection - camCF.LookVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-			moveDirection = moveDirection - camCF.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-			moveDirection = moveDirection + camCF.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			moveDirection = moveDirection + Vector3.new(0, 1, 0)
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-			moveDirection = moveDirection - Vector3.new(0, 1, 0)
-		end
-		
-		if moveDirection.Magnitude > 0 then
-			moveDirection = moveDirection.Unit
-		end
-		
-		flyBodyVelocity.Velocity = moveDirection * flySpeed
 	end)
 	
 	flySpeedBar.Visible = true
@@ -1150,9 +1149,8 @@ for i, name in ipairs(tabNames) do
 	contentFrame.BackgroundTransparency = 1
 	contentFrame.Visible = false
 	contentFrame.ZIndex = 8
-	contentFrame.Parent = rightClipFrame  -- 改为放在rightClipFrame下
+	contentFrame.Parent = rightClipFrame
 	
-	-- 内容区域加内边距
 	local contentInner = Instance.new("Frame")
 	contentInner.Size = UDim2.new(1, -20, 1, -20)
 	contentInner.Position = UDim2.new(0, 10, 0, 10)
@@ -1359,7 +1357,6 @@ for i, name in ipairs(tabNames) do
 	contentFrames[name] = contentFrame
 
 	tabBtn.MouseButton1Click:Connect(function()
-		-- 高亮当前按钮
 		for _, btn in ipairs(optionList:GetChildren()) do
 			if btn:IsA("TextButton") then
 				btn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
@@ -1367,13 +1364,11 @@ for i, name in ipairs(tabNames) do
 		end
 		tabBtn.BackgroundColor3 = Color3.new(0.35, 0.5, 0.9)
 		
-		-- 使用切换动画
 		local targetIndex = i
 		switchToTab(targetIndex)
 	end)
 end
 
--- 初始化显示第一个选项卡
 if tabNames[1] then
 	local firstContent = contentFrames[tabNames[1]]
 	if firstContent then
