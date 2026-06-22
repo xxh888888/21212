@@ -356,27 +356,15 @@ end)
 
 confirmBtn.MouseButton1Click:Connect(function()
 	hideConfirmDialog(function()
-		-- 关闭所有功能
-		espEnabled = false
-		aimbotEnabled = false
-		if flyEnabled then
-			flyEnabled = false
-			stopFly()
-		end
-		if speedEnabled then
-			speedEnabled = false
-			stopSpeed()
-		end
-		if godModeEnabled then
-			godModeEnabled = false
-			if godModeTimer then godModeTimer = nil end
-		end
-		-- 关闭景深效果
 		TweenService:Create(blurEffect, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = 0}):Play()
 		task.wait(0.3)
 		blurEffect:Destroy()
 		screenGui:Destroy()
 	end)
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	showConfirmDialog()
 end)
 
 -- ========== 选项卡 ==========
@@ -417,19 +405,19 @@ local function switchToTab(targetIndex, fromDirection)
 	
 	local direction = fromDirection or (targetIndex > currentTabIndex and "right" or "left")
 	
-	local oldStartPos, oldEndPos
-	local newStartPos, newEndPos
+	local newStartPos
 	
 	if direction == "right" then
-		oldStartPos = UDim2.new(0, 0, 0, 0)
-		oldEndPos = UDim2.new(0, -rightClipFrame.AbsoluteSize.X, 0, 0)
 		newStartPos = UDim2.new(0, rightClipFrame.AbsoluteSize.X, 0, 0)
-		newEndPos = UDim2.new(0, 0, 0, 0)
 	else
-		oldStartPos = UDim2.new(0, 0, 0, 0)
-		oldEndPos = UDim2.new(0, rightClipFrame.AbsoluteSize.X, 0, 0)
 		newStartPos = UDim2.new(0, -rightClipFrame.AbsoluteSize.X, 0, 0)
-		newEndPos = UDim2.new(0, 0, 0, 0)
+	end
+	
+	local oldEndPos
+	if direction == "right" then
+		oldEndPos = UDim2.new(0, -rightClipFrame.AbsoluteSize.X, 0, 0)
+	else
+		oldEndPos = UDim2.new(0, rightClipFrame.AbsoluteSize.X, 0, 0)
 	end
 	
 	newContent.Visible = true
@@ -454,7 +442,7 @@ local function switchToTab(targetIndex, fromDirection)
 	local oldTween = TweenService:Create(oldContent, oldTweenInfo, {Position = oldEndPos})
 	oldTween:Play()
 	
-	local newTween = TweenService:Create(newContent, newTweenInfo, {Position = newEndPos})
+	local newTween = TweenService:Create(newContent, newTweenInfo, {Position = UDim2.new(0, 0, 0, 0)})
 	newTween:Play()
 	
 	for _, child in ipairs(newContent:GetDescendants()) do
@@ -1097,7 +1085,6 @@ if player.Character and player.Character:FindFirstChild("Humanoid") then
 	originalWalkSpeed = player.Character.Humanoid.WalkSpeed
 end
 
-
 -- ========== 主循环 ==========
 RunService.RenderStepped:Connect(function()
 	updateESP()
@@ -1142,7 +1129,7 @@ for i, name in ipairs(tabNames) do
 		textLabel.Size = UDim2.new(1, 0, 1, 0)
 		textLabel.Position = UDim2.new(0, 0, 0, 0)
 		textLabel.BackgroundTransparency = 1
-		textLabel.Text = "本辅助暂时公益有什么不足的地方或功能可以反馈哦\n反馈可延长公益时间\n反馈频道:@PJnbyyds\n反馈q群:157972073"
+		textLabel.Text = "本辅助暂时公益\n反馈可延长公益时长"
 		textLabel.TextColor3 = Color3.new(1, 1, 1)
 		textLabel.Font = Enum.Font.Gotham
 		textLabel.TextSize = 20
@@ -1248,7 +1235,6 @@ for i, name in ipairs(tabNames) do
 		funcLayout.Padding = UDim.new(0, 8)
 		funcLayout.Parent = funcScrollingFrame
 		
-
 		-- 强锁自瞄
 		local aimbotToggle = Instance.new("TextButton")
 		aimbotToggle.Name = "AimbotToggle"
@@ -1328,7 +1314,6 @@ for i, name in ipairs(tabNames) do
 			end
 		end)
 		
-
 		funcScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, funcLayout.AbsoluteContentSize.Y + 10)
 		funcLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 			funcScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, funcLayout.AbsoluteContentSize.Y + 10)
@@ -1379,22 +1364,18 @@ local globalCooldown = 0
 local ANIMATIONS_PER_MINUTE = 6
 local MINUTE_LENGTH = 60
 local minuteTimer = 0
-local animationsThisMinute = {}
 local animationSlots = {}
 
 local availableAnimations = {"sleepy", "wander", "giggle", "sneeze", "coverMouth", "scratchHead", "emote"}
 
 local function redistributeAnimations()
-	animationsThisMinute = {}
 	animationSlots = {}
 	
 	local slotSize = MINUTE_LENGTH / ANIMATIONS_PER_MINUTE
 	
 	for i = 1, ANIMATIONS_PER_MINUTE do
 		local slotStart = (i - 1) * slotSize
-		local slotEnd = i * slotSize
 		local triggerTime = slotStart + math.random(slotSize * 0.2, slotSize * 0.8)
-		
 		local anim = availableAnimations[math.random(#availableAnimations)]
 		
 		table.insert(animationSlots, {
